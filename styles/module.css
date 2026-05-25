@@ -1,0 +1,56 @@
+.cfb-status {
+  padding: 0.5rem 0.75rem;
+  font-size: var(--font-size-14);
+}
+
+.cfb-status .cfb-line {
+  margin: 0.35rem 0;
+}
+
+.cfb-status code {
+  word-break: break-all;
+}
+
+.cfb-badge {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  font-size: var(--font-size-11);
+  color: #fff;
+}
+
+.cfb-badge.cfb-connected { background: #2e7d32; }
+.cfb-badge.cfb-connecting { background: #ef6c00; }
+.cfb-badge.cfb-disconnected { background: #b71c1c; }
+
+.cfb-status .cfb-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+  flex-wrap: wrap;
+}
+
+.cfb-status .cfb-logs {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  max-height: 240px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-12);
+}
+
+.cfb-status .cfb-logs li {
+  padding: 1px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cfb-status .cfb-muted {
+  opacity: 0.6;
+  font-style: italic;
+}

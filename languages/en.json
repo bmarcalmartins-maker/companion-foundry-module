@@ -1,0 +1,22 @@
+{
+  "CFB.Settings.BridgeUrl.Name": "Bridge URL",
+  "CFB.Settings.BridgeUrl.Hint": "WebSocket endpoint of the Companion bridge Worker. Default: wss://bridge.companion-products.org/ws",
+  "CFB.Settings.ApiKey.Name": "API Key",
+  "CFB.Settings.ApiKey.Hint": "Shared secret. Must match the BRIDGE_API_KEY set on the Worker and the Companion (Supabase) secret.",
+  "CFB.Settings.AutoConnect.Name": "Auto-connect on startup",
+  "CFB.Settings.AutoConnect.Hint": "Connect to the bridge automatically when the world loads (GM only).",
+  "CFB.Settings.StatusMenu.Name": "Connection Status",
+  "CFB.Settings.StatusMenu.Label": "Open Status Panel",
+  "CFB.Settings.StatusMenu.Hint": "View the bridge connection status, recent logs, and reconnect.",
+  "CFB.Status.Title": "Companion Bridge — Status",
+  "CFB.Status.Connection": "Connection",
+  "CFB.Status.Reconnect": "Reconnect",
+  "CFB.Status.Disconnect": "Disconnect",
+  "CFB.Status.Refresh": "Refresh",
+  "CFB.Status.Logs": "Recent logs",
+  "CFB.Status.NoLogs": "No activity yet.",
+  "CFB.Notify.Connected": "Companion bridge connected.",
+  "CFB.Notify.Disconnected": "Companion bridge disconnected.",
+  "CFB.Notify.Reconnecting": "Companion bridge reconnecting in {seconds}s…",
+  "CFB.Notify.NoApiKey": "Companion bridge: no API key set. Configure it in the module settings."
+}

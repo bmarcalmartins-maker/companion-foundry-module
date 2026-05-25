@@ -1,0 +1,22 @@
+{
+  "CFB.Settings.BridgeUrl.Name": "URL do Bridge",
+  "CFB.Settings.BridgeUrl.Hint": "Endpoint WebSocket do Worker bridge do Companion. Padrão: wss://bridge.companion-products.org/ws",
+  "CFB.Settings.ApiKey.Name": "Chave de API",
+  "CFB.Settings.ApiKey.Hint": "Segredo compartilhado. Tem que ser igual à BRIDGE_API_KEY do Worker e ao secret do Companion (Supabase).",
+  "CFB.Settings.AutoConnect.Name": "Conectar automaticamente",
+  "CFB.Settings.AutoConnect.Hint": "Conecta no bridge automaticamente quando o mundo carrega (só GM).",
+  "CFB.Settings.StatusMenu.Name": "Status da Conexão",
+  "CFB.Settings.StatusMenu.Label": "Abrir Painel de Status",
+  "CFB.Settings.StatusMenu.Hint": "Veja o status da conexão com o bridge, logs recentes e reconecte.",
+  "CFB.Status.Title": "Companion Bridge — Status",
+  "CFB.Status.Connection": "Conexão",
+  "CFB.Status.Reconnect": "Reconectar",
+  "CFB.Status.Disconnect": "Desconectar",
+  "CFB.Status.Refresh": "Atualizar",
+  "CFB.Status.Logs": "Logs recentes",
+  "CFB.Status.NoLogs": "Nenhuma atividade ainda.",
+  "CFB.Notify.Connected": "Bridge do Companion conectado.",
+  "CFB.Notify.Disconnected": "Bridge do Companion desconectado.",
+  "CFB.Notify.Reconnecting": "Bridge do Companion reconectando em {seconds}s…",
+  "CFB.Notify.NoApiKey": "Bridge do Companion: chave de API não configurada. Configure nas opções do módulo."
+}
