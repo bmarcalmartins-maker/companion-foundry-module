@@ -4,6 +4,8 @@ const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 const HEARTBEAT_MS = 45_000;
 const MAX_LOGS = 50;
+/** Show a reconnect toast on the 1st attempt of a down cycle, then every Nth. */
+const NOTIFY_EVERY_ATTEMPTS = 5;
 
 /**
  * WebSocket client that connects the Foundry GM session to the bridge Worker.
@@ -103,10 +105,15 @@ export class BridgeClient {
   scheduleReconnect() {
     if (this.intentionalClose) return;
     const delay = Math.min(BASE_BACKOFF_MS * 2 ** this.reconnectAttempt, MAX_BACKOFF_MS);
-    this.reconnectAttempt += 1;
     const seconds = Math.round(delay / 1000);
-    this.log(`reconnecting in ${seconds}s`);
-    ui.notifications.warn(game.i18n.format("CFB.Notify.Reconnecting", { seconds }));
+    // The internal log records every attempt, but the on-screen toast would spam
+    // the GM during a long outage — so notify only on the first failure of a down
+    // cycle (attempt 0, reset on connect/reconnect) and then every 5th attempt.
+    this.log(`reconnecting in ${seconds}s (attempt ${this.reconnectAttempt + 1})`);
+    if (this.reconnectAttempt % NOTIFY_EVERY_ATTEMPTS === 0) {
+      ui.notifications.warn(game.i18n.format("CFB.Notify.Reconnecting", { seconds }));
+    }
+    this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => this.connect(), delay);
   }
 

@@ -1,0 +1,57 @@
+name: Release
+
+# Empacota o módulo e publica um GitHub release a cada tag de versão (ex.: v1.0.0).
+# Os assets module.json + module.zip ficam acessíveis via:
+#   .../releases/latest/download/module.json   (manifest)
+#   .../releases/latest/download/module.zip     (download)
+# que são exatamente as URLs que o module.json já aponta.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derivar versão da tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Gravar a versão no module.json
+        # Mantém a versão do manifesto igual à tag, pra detecção de update do Foundry.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const m = JSON.parse(fs.readFileSync("module.json", "utf8"));
+            m.version = process.env.VERSION;
+            fs.writeFileSync("module.json", JSON.stringify(m, null, 2) + "\n");
+          '
+
+      - name: Montar module.zip
+        # module.json fica na raiz do zip (formato esperado pelo instalador do Foundry).
+        run: |
+          zip -r module.zip \
+            module.json \
+            scripts \
+            styles \
+            languages \
+            README.md
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: |
+            module.json
+            module.zip
+          fail_on_unmatched_files: true
