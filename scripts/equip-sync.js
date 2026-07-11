@@ -34,6 +34,22 @@ import { MODULE_ID } from "./settings.js";
 /** Tipos dnd5e físicos que fazem sentido no inventário do Companion. */
 const PHYSICAL_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
 
+/**
+ * Habilidade/ataque NATIVO do dnd5e (Unarmed Strike, garras, mordidas…) — NÃO
+ * é item de inventário: não é loot, não vende, e todo PC/monstro tem. Critério
+ * REAL (não o nome): armas de subtipo "natural" (DND5E.weaponTypes.natural,
+ * confirmado no config.mjs do dnd5e 5.3.3). Filtrar aqui pega qualquer idioma
+ * e também garras/mordidas que porventura entrem, não só o Unarmed Strike.
+ */
+function isNativeWeapon(item) {
+  return item?.type === "weapon" && item?.system?.type?.value === "natural";
+}
+
+/** Item elegível pra viajar pro Companion: físico e NÃO nativo. */
+function isSyncableItem(item) {
+  return PHYSICAL_TYPES.has(item?.type) && !isNativeWeapon(item);
+}
+
 /** Pausa entre POSTs do sync inicial — a edge limita upsert a 10/60s por actor. */
 const INITIAL_SYNC_DELAY_MS = 7_000;
 
@@ -113,17 +129,43 @@ async function postInbound(payload) {
 /*  Payload de item completo                    */
 /* -------------------------------------------- */
 
-/** Resumo curto de stats pro campo properties do Companion (dano/CA). */
-function statsSummary(item) {
+/**
+ * Stats de combate ESTRUTURADOS (Bloco 3) — espelham as colunas planas de
+ * items no Companion (damage_dice/damage_type/ac_base/range). Campo ausente
+ * vira null (a edge grava null sem sobrescrever com lixo).
+ *  - dano: system.damage.base { number, denomination, bonus, types }
+ *  - CA:   system.armor.value (só armadura)
+ *  - alcance: system.range { value, long, reach, units } — ranged usa value/long,
+ *    corpo-a-corpo usa reach. [HIPÓTESE só-teste: shape exato do range no dnd5e.]
+ */
+function combatStats(item) {
   const sys = item?.system ?? {};
-  const parts = [];
   const d = sys.damage?.base;
-  if (d?.number && d?.denomination) {
-    const types = [...(d.types ?? [])].join("/");
-    parts.push(`${d.number}d${d.denomination}${d.bonus ? `+${d.bonus}` : ""}${types ? ` ${types}` : ""}`);
+  const damage_dice = d?.number && d?.denomination
+    ? `${d.number}d${d.denomination}${d.bonus ? `+${d.bonus}` : ""}`
+    : null;
+  const damage_type = Array.isArray(d?.types) && d.types.length ? String(d.types[0]) : null;
+
+  const acVal = sys.armor?.value;
+  const ac_base = typeof acVal === "number" && acVal > 0 ? acVal : null;
+
+  let range = null;
+  const r = sys.range;
+  if (r) {
+    const units = r.units || "ft";
+    if (r.value) range = `${r.value}${r.long ? `/${r.long}` : ""} ${units}`.trim();
+    else if (r.reach) range = `reach ${r.reach} ${units}`.trim();
   }
-  const ac = sys.armor?.value;
-  if (typeof ac === "number" && ac > 0) parts.push(`CA ${ac}`);
+  return { damage_dice, damage_type, ac_base, range };
+}
+
+/** Resumo curto de stats pro campo properties do Companion (texto, p/ ItensTab). */
+function statsSummary(item) {
+  const s = combatStats(item);
+  const parts = [];
+  if (s.damage_dice) parts.push(`${s.damage_dice}${s.damage_type ? ` ${s.damage_type}` : ""}`);
+  if (s.ac_base != null) parts.push(`CA ${s.ac_base}`);
+  if (s.range) parts.push(s.range);
   return parts.join(" · ");
 }
 
@@ -134,8 +176,13 @@ function buildUpsertPayload(item, actor) {
     foundry_item_id: item.id,
     name: item.name ?? "Item",
     type: item.type ?? "",
+    // Subtipo dnd5e (system.type.value): pra armadura é "light"/"medium"/
+    // "heavy"/"shield"; pra equipamento genérico é "trinket"/"clothing"/etc.
+    // A edge usa isso pra separar armadura de verdade de tralha (Bloco 2).
+    subtype: item.system?.type?.value ?? "",
     description: item.system?.description?.value ?? "",
     stats: statsSummary(item),
+    ...combatStats(item), // Bloco 3: damage_dice/damage_type/ac_base/range estruturados
     img: item.img ?? "",
     qty: item.system?.quantity ?? 1,
     equipped: item.system?.equipped === true,
@@ -165,7 +212,7 @@ async function upsertItem(item, actor) {
 function eligibleActor(item) {
   const actor = item?.parent;
   if (!(actor instanceof Actor) || actor.type !== "character") return null;
-  if (!PHYSICAL_TYPES.has(item.type)) return null;
+  if (!isSyncableItem(item)) return null; // exclui não-físicos E nativos (Unarmed Strike)
   return actor;
 }
 
@@ -224,7 +271,7 @@ export async function syncActorInventory(actor) {
     return null;
   }
   const pending = actor.items.filter(
-    (i) => PHYSICAL_TYPES.has(i.type) && !isBridgeManaged(i) && !getCompanionItemId(i)
+    (i) => isSyncableItem(i) && !isBridgeManaged(i) && !getCompanionItemId(i)
   );
   ui.notifications.info(`Companion: enviando ${pending.length} itens de "${actor.name}"…`);
 
