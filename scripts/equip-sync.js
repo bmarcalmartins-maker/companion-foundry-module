@@ -34,6 +34,22 @@ import { MODULE_ID } from "./settings.js";
 /** Tipos dnd5e físicos que fazem sentido no inventário do Companion. */
 const PHYSICAL_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
 
+/**
+ * Habilidade/ataque NATIVO do dnd5e (Unarmed Strike, garras, mordidas…) — NÃO
+ * é item de inventário: não é loot, não vende, e todo PC/monstro tem. Critério
+ * REAL (não o nome): armas de subtipo "natural" (DND5E.weaponTypes.natural,
+ * confirmado no config.mjs do dnd5e 5.3.3). Filtrar aqui pega qualquer idioma
+ * e também garras/mordidas que porventura entrem, não só o Unarmed Strike.
+ */
+function isNativeWeapon(item) {
+  return item?.type === "weapon" && item?.system?.type?.value === "natural";
+}
+
+/** Item elegível pra viajar pro Companion: físico e NÃO nativo. */
+function isSyncableItem(item) {
+  return PHYSICAL_TYPES.has(item?.type) && !isNativeWeapon(item);
+}
+
 /** Pausa entre POSTs do sync inicial — a edge limita upsert a 10/60s por actor. */
 const INITIAL_SYNC_DELAY_MS = 7_000;
 
@@ -165,7 +181,7 @@ async function upsertItem(item, actor) {
 function eligibleActor(item) {
   const actor = item?.parent;
   if (!(actor instanceof Actor) || actor.type !== "character") return null;
-  if (!PHYSICAL_TYPES.has(item.type)) return null;
+  if (!isSyncableItem(item)) return null; // exclui não-físicos E nativos (Unarmed Strike)
   return actor;
 }
 
@@ -224,7 +240,7 @@ export async function syncActorInventory(actor) {
     return null;
   }
   const pending = actor.items.filter(
-    (i) => PHYSICAL_TYPES.has(i.type) && !isBridgeManaged(i) && !getCompanionItemId(i)
+    (i) => isSyncableItem(i) && !isBridgeManaged(i) && !getCompanionItemId(i)
   );
   ui.notifications.info(`Companion: enviando ${pending.length} itens de "${actor.name}"…`);
 
