@@ -229,19 +229,35 @@ export class BridgeClient {
   /*  Actor handlers                              */
   /* -------------------------------------------- */
 
-  /** Tag embedded items as bridge-managed so re-sync can replace only our items. */
+  /**
+   * Tag embedded items as bridge-managed so re-sync can replace only our items.
+   * Também consolida o crachá do Companion no escopo VÁLIDO do módulo:
+   * flags[MODULE_ID].item_id (a doc do Foundry exige escopo de módulo
+   * instalado; "companion" não é). Payloads novos já trazem os dois escopos;
+   * payloads antigos só trazem flags.companion — copiamos pro escopo válido
+   * pra leitura via getFlag nunca depender do escopo inválido.
+   */
   #tagItems(items) {
     if (!Array.isArray(items)) return items;
-    return items.map((item) =>
-      foundry.utils.mergeObject(item, { flags: { [MODULE_ID]: { synced: true } } }, { inplace: false })
-    );
+    return items.map((item) => {
+      const badge = item?.flags?.[MODULE_ID]?.item_id ?? item?.flags?.companion?.item_id ?? null;
+      return foundry.utils.mergeObject(
+        item,
+        { flags: { [MODULE_ID]: { synced: true, item_id: badge } } },
+        { inplace: false }
+      );
+    });
   }
 
+  // TOKEN DE ORIGEM (anti-eco): toda operação de documento disparada pelo
+  // bridge carrega { companionBridge: true } nas options. Os hooks da mão de
+  // volta (equip-sync.js) IGNORAM operações com essa marca — mudança que veio
+  // DO Companion nunca é reenviada PRO Companion.
   async #createActor(payload) {
     if (!payload || typeof payload !== "object") throw new Error("missing actor payload");
     const data = foundry.utils.deepClone(payload);
     if (Array.isArray(data.items)) data.items = this.#tagItems(data.items);
-    const actor = await Actor.implementation.create(data, { keepId: false });
+    const actor = await Actor.implementation.create(data, { keepId: false, companionBridge: true });
     if (!actor) throw new Error("actor creation returned no document");
     return { actor_id: actor.id };
   }
@@ -252,13 +268,13 @@ export class BridgeClient {
     if (!actor) throw new Error(`actor not found: ${actorId}`);
 
     const { items, ...actorData } = payload ?? {};
-    if (Object.keys(actorData).length) await actor.update(actorData);
+    if (Object.keys(actorData).length) await actor.update(actorData, { companionBridge: true });
 
     // Replace only previously bridge-synced items; leave GM-added items untouched.
     if (Array.isArray(items)) {
       const syncedIds = actor.items.filter((i) => i.getFlag(MODULE_ID, "synced")).map((i) => i.id);
-      if (syncedIds.length) await actor.deleteEmbeddedDocuments("Item", syncedIds);
-      await actor.createEmbeddedDocuments("Item", this.#tagItems(items));
+      if (syncedIds.length) await actor.deleteEmbeddedDocuments("Item", syncedIds, { companionBridge: true });
+      await actor.createEmbeddedDocuments("Item", this.#tagItems(items), { companionBridge: true });
     }
     return { actor_id: actor.id };
   }
@@ -267,7 +283,7 @@ export class BridgeClient {
     if (!actorId) throw new Error("missing actor_id");
     const actor = game.actors.get(actorId);
     if (!actor) throw new Error(`actor not found: ${actorId}`);
-    await actor.delete();
+    await actor.delete({ companionBridge: true });
     return { actor_id: actorId };
   }
 }

@@ -1,5 +1,6 @@
 import { MODULE_ID, registerSettings } from "./settings.js";
 import { BridgeClient } from "./bridge-client.js";
+import { registerEquipWatcher, syncActorInventory } from "./equip-sync.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -19,7 +20,14 @@ Hooks.once("ready", () => {
     disconnect: () => client.disconnect(),
     reconnect: () => client.reconnect(),
     getStatus: () => client.status,
+    // Sync inicial Foundry→Companion (macro/console):
+    // game.modules.get("companion-foundry-bridge").api.syncInventory(actor)
+    syncInventory: (actor) => syncActorInventory(actor),
   };
 
   if (game.settings.get(MODULE_ID, "autoConnect")) client.connect();
+
+  // Foundry→Companion (bidirecional): observa equip/desequip de itens synced.
+  // GM-only por estar dentro deste bloco — clientes de jogador nunca registram.
+  registerEquipWatcher();
 });
