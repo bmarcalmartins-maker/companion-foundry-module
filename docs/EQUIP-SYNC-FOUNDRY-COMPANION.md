@@ -1,149 +1,225 @@
-# Equip Sync — Foundry → Companion (ponte bidirecional, lado Foundry)
+# Ponte Bidirecional Companion ↔ Foundry — documento mestre
 
-**Sessão:** 2026-07-11 · **Branch:** `claude/companion-foundry-bridge-6kstk8`
-**Decisão do Bruno:** **Caminho B** — o módulo chama a edge function
-`foundry-inbound` do Companion **direto por HTTP** quando detecta
-equipar/desequipar dentro do Foundry. **Worker (`companion-foundry-bridge`)
-fica intocado.**
+**Sessões:** 2026-07-11 · **Branches:** `claude/companion-foundry-bridge-6kstk8`
+(nos repos `baldur-s-gate-companion` e `companion-foundry-module`; o Worker
+`companion-foundry-bridge` **não foi tocado** — decisão: o módulo chama a edge
+direto por HTTP).
 
-Convenção deste doc: **FATO** = verificado por leitura de código/saída de
-comando (com `arquivo:linha`). **HIPÓTESE** = inferência que só o teste ao
-vivo no Foundry confirma (nenhum Foundry rodou nesta sessão).
+Convenção: **FATO** = verificado por leitura de código/SELECT/saída de comando.
+**HIPÓTESE** = só o teste ao vivo no Foundry confirma (nenhum Foundry rodou
+nas sessões de implementação).
 
 ---
 
-## 1. O que o Companion já tem pronto (lado de lá, no ar)
+## 1. Arquitetura final
 
-- Edge function **`foundry-inbound`** (repo `baldur-s-gate-companion`,
-  `supabase/functions/foundry-inbound/index.ts`):
-  - Recebe `POST {actor_id, item_id, equipped}` — whitelist estrita, qualquer
-    outro campo é descartado (`index.ts:69-74`). FATO.
-  - Auth: header `x-foundry-inbound-key` === secret `FOUNDRY_INBOUND_KEY`
-    (`index.ts:57`). Sem o secret configurado responde **503** (inerte por
-    design, `index.ts:53`). FATO.
-  - Valida `actor_id` contra `player_characters.foundry_actor_id`; actor não
-    vinculado → **404** (`index.ts:84-89`). FATO.
-  - Único write: `character_items.equipped` daquele PC+item (`index.ts:93-98`).
-    Item fora do inventário → **404**. FATO.
-  - Rate-limit best-effort 20 hits/10s por actor → **429** (`index.ts:33-42`).
-    FATO.
-  - **CORS aberto pro browser**: `Access-Control-Allow-Origin: *`, header
-    `x-foundry-inbound-key` permitido, OPTIONS tratado (`index.ts:25-28,45`).
-    FATO — é o que viabiliza o Caminho B (fetch direto do browser do Foundry).
-  - Deployada com **`verify_jwt: false`** (única função assim — verificado via
-    API de management do Supabase). FATO — o módulo NÃO precisa de JWT/anon
-    key, só do header secreto.
-  - URL: `https://leziqtoarclocroaqwsp.supabase.co/functions/v1/foundry-inbound`
-    (vai em setting do módulo, não hardcoded).
-- **Crachá do item**: o Companion envia cada item com
-  `flags.companion.item_id` (repo principal,
-  `push-to-foundry/mapping.ts:346`). FATO.
+```
+COMPANION → FOUNDRY (já existia, melhorada na Fase B1)
+  botão no Companion → edge push-to-foundry → Worker (WS) → módulo
+  → delete+create dos itens synced no actor
 
-## 2. Recon do módulo (companion-foundry-module)
+FOUNDRY → COMPANION (novo, Fases B2+B3)
+  hook no módulo (updateItem/createItem) → POST HTTP direto →
+  edge foundry-inbound (x-foundry-inbound-key) → items/character_items
+```
 
-- Hooks existentes: só `Hooks.once("init")` (`main.js:4`) e
-  `Hooks.once("ready")` (`main.js:9`), com guarda GM-only em `main.js:12`.
-  FATO.
-- `#tagItems` usa `mergeObject(..., {inplace:false})` com merge default —
-  **preserva** `flags.companion` vindo no payload e só adiciona
-  `flags["companion-foundry-bridge"].synced` (`bridge-client.js:233-238`).
-  FATO. *(Corrige o comentário antigo em `mapping.ts:342-343` que supunha o
-  contrário.)*
-- Sync de itens vindo do Companion é **delete + create** — nunca update de
-  item (`bridge-client.js:259-261`). FATO. (Central pra análise do eco, §5.)
-- `send()` do WS descarta silenciosamente se desconectado
-  (`bridge-client.js:179`) — irrelevante pro Caminho B (HTTP direto), mas
-  registrado.
-- Settings hoje: `game.settings.register` world-scoped, `config: true`
-  (`settings.js:11-36`) — `bridgeUrl`, `apiKey`, `autoConnect` + menu de
-  status. O apiKey já vive como setting world (mesmo trade-off de
-  visibilidade vale pras settings novas do passo 2).
+O crachá que liga os dois mundos: `flags["companion-foundry-bridge"].item_id`
+= `items.id` do Companion (escopo VÁLIDO de flag — id do módulo instalado;
+o legado `flags.companion.item_id` continua viajando por compatibilidade e é
+lido só por acesso direto ao objeto, nunca `getFlag("companion", ...)`).
 
-## 3. Achado crítico (bloqueia o teste ponta-a-ponta — decisão pendente, lado Companion)
+## 2. O que mudou em cada repo (por commit)
 
-**FATO (source do dnd5e 5.3.3 lido no GitHub):** item `type: "loot"` NÃO tem
-`system.equipped` — `LootData` não inclui o `EquippableItemTemplate`
-(`module/data/item/loot.mjs`). `EquipmentData` inclui (`equipment.mjs`).
-E todo item de inventário de PC viaja como `type: "loot"`
-(`mapping.ts:332,359-365`). FATO.
+### `baldur-s-gate-companion`
 
-**Consequência:** hoje não existe toggle de equipar nesses itens no Foundry —
-o hook nunca dispararia. Pendência **no lado Companion** (fora deste repo):
+**Fase B1 — `6a525f5` — tipos corretos + stats + equipped no push:**
+- `push-to-foundry/mapping.ts`: novo `buildPcItem` — de-para
+  `item_catalog.category` → tipo dnd5e (weapon/staff→weapon; armor/shield→
+  equipment; potion/scroll/poison/ammunition→consumable; tools→tool;
+  equipment-pack→container), depois `items.type` da UI (Arma→weapon,
+  Armadura/Artefato Sagrado→equipment, Consumível→consumable), fallback
+  **"equipment"** — NUNCA "loot" no inventário de PC (FATO: `LootData` do
+  dnd5e 5.3.3 não tem `system.equipped`).
+- Stats do catálogo: `damage_dice`/`damage_type` → `system.damage.base` (o
+  MESMO `parseDamage` já validado em prod pelos ataques de NPC — FATO);
+  `ac_base` + `stats.raw.armor.category`/`ac_cap_dexmod` (verificados no
+  banco real) → `system.armor`/`system.type`; peso, preço, raridade
+  ("Very Rare"→"veryRare"), descrição, subtipo de consumível.
+- `system.equipped` ← `character_items.equipped` (só weapon/equipment).
+- Crachá nos DOIS escopos (`companionFlags`), inclusive no loot de NPC.
+- `push-to-foundry/index.ts`: busca `item_catalog` à parte e casa por
+  `catalog_source_key` (FATO: não há FK items→item_catalog, embed não
+  resolve).
 
-- **Opção A (mínima):** `buildPcInventoryPayload` muda o type pra
-  `"equipment"` só no inventário de PC + passa a mandar `system.equipped`
-  a partir de `character_items.equipped` (isso também corrige o eco residual
-  do §5.4).
-- **Opção B:** mapear `items.type` (coluna text livre) → tipo dnd5e.
+**Fase B2 — `a52be84` — porta de entrada expandida:**
+- `foundry-inbound/index.ts`: nova operação `op:"item.upsert"` mantendo a
+  rota de equipped INTACTA (body sem `op` = caminho antigo, byte a byte).
+- Travas (todas justificadas no cabeçalho do arquivo): segredo próprio no
+  header (inalterado) · valida actor vinculado (inalterado) · whitelist
+  estrita por operação (upsert lê SÓ foundry_item_id, name, type, stats,
+  description, img, qty, equipped) · body > 32 KiB → 413 · rate-limit do
+  upsert 10/60s por actor (equipped continua 20/10s) · sanitização (strip
+  TOTAL de HTML + entities + caps; img só URL http(s) — caminho local
+  "icons/..." do Foundry é descartado) · dedupe por
+  `(foundry_item_id, character_id)` — reenvio vira UPDATE, nunca duplica ·
+  escrita restrita ao PC dono · log de auditoria.
+- Resposta devolve `items.id` → o módulo grava como crachá no item do
+  Foundry (item nativo ganha identidade do Companion).
+- **Migration aditiva** `20260711000100_impl35_items_foundry_item_id.sql`
+  (SQL na §4 — aplicar MANUAL).
 
-## 4. Plano em 3 passos (este repo) — DIFF gate por passo
+### `companion-foundry-module`
 
-| Passo | O quê | Estado |
-|---|---|---|
-| **1** | Hook `updateItem` detecta equip/desequip de item com crachá do Companion — só detecta e **loga** | ✅ commit `58d5eb2` |
-| **2** | Settings `inboundUrl` + `inboundKey` (padrão de `settings.js`) + POST pra `foundry-inbound` com o header secreto | ⏳ aguardando OK |
-| **3** | Trava do loop de eco (token de origem nas operações do bridge + doc da lógica) | ⏳ aguardando OK |
+**Fase B3 — `58d5eb2` (detecção) + `db246ff` (mão de volta completa):**
+- `settings.js`: `inboundUrl` (default = URL real da edge, editável) +
+  `inboundKey` (default vazio = mão de volta DESLIGADA). Strings en/pt-BR.
+- `bridge-client.js#tagItems`: consolida o crachá no escopo válido
+  (`flags[MODULE_ID].item_id`) inclusive pra payloads antigos que só trazem
+  `flags.companion`; toda operação de documento do bridge agora passa
+  `{ companionBridge: true }` nas options (token de origem).
+- `equip-sync.js` (novo): hooks `updateItem` + `createItem`, POST
+  autenticado com log claro por status (401/404/413/429/503),
+  `syncActorInventory` (sync inicial, 1 item/7s), anti-eco em 3 camadas
+  (§3).
+- `main.js`: watcher registrado só no bloco GM do `ready`;
+  `api.syncInventory(actor)` exposto pra macro/console.
 
-## 5. Loop de eco — por que NÃO vira ping-pong
+## 3. LOOP DE ECO — as 3 camadas (por que não duplica)
 
-1. **FATO:** equipar VIA Companion chega no Foundry como **delete + create**
-   dos itens synced (`bridge-client.js:259-261`) — dispara hooks
-   `deleteItem`/`createItem`, **não** `updateItem`. O watcher (só
-   `updateItem`) não é acionado pelo sync do Companion. *(Depende da
-   HIPÓTESE H1 abaixo valer.)*
-2. **FATO:** não existe push automático Companion→Foundry em mudança de
-   `character_items` — `push-to-foundry` de inventário só roda por clique
-   manual (`JogadoresTab.tsx:516-529`). O write que a `foundry-inbound` faz
-   no banco não gera push de volta.
-3. **Passo 3 (defesa em profundidade):** token de origem
-   (`options.companionBridge`) nas operações de documento do bridge, ignorado
-   pelo watcher — protege contra mudanças futuras (update fino de item,
-   auto-push no Companion). Mesmo no pior cenário futuro o ciclo converge em
-   1 volta (delete+create não re-dispara `updateItem`), e o rate-limit da
-   edge segura flood.
-4. **Eco residual documentado (não é loop, é sobrescrita):** GM equipa no
-   Foundry → DB atualiza → um re-sync manual futuro recria os itens SEM
-   `system.equipped` (o payload não manda esse campo — FATO, zero ocorrências
-   em `mapping.ts`) → desfaz visualmente o equip no Foundry. Correção junto
-   com a Opção A do §3.
+O perigo: Companion manda item → Foundry cria → `createItem` dispara → módulo
+manda de volta → Companion cria de novo → infinito. Barrado por:
 
-## 6. PASSO 1 — o que foi mexido (commit `58d5eb2`)
+1. **Token de origem** — toda operação do bridge-client leva
+   `{ companionBridge: true }` nas options; TODO hook da mão de volta
+   descarta essas operações na primeira linha. *(HIPÓTESE H5: options
+   customizadas chegam nos hooks do cliente iniciador — padrão do Foundry,
+   e o GM é iniciador E observador aqui.)*
+2. **Identidade** — item que veio do Companion tem `flags[MODULE_ID].synced`
+   + crachá; `createItem`/upsert pulam esses. Só item genuinamente novo do
+   Foundry viaja.
+3. **Estrutural (FATO no código)** — o sync Companion→Foundry é
+   DELETE+CREATE de itens synced (`bridge-client.js #updateActor`), nunca
+   update → não dispara `updateItem`; e o único write da volta é
+   `character_items.equipped`/upsert no banco, que NÃO gera push automático
+   pro Foundry (push-to-foundry é botão manual — `JogadoresTab.tsx`).
 
-- **Novo `scripts/equip-sync.js`** — `registerEquipWatcher()`:
-  `Hooks.on("updateItem", (item, changes, options, userId))` com filtro
-  quádruplo, early-return em cada um:
-  1. `changes?.system?.equipped` é boolean (ignora qualquer outro update);
-  2. `item.parent instanceof Actor` (só item embutido);
-  3. `item.flags?.companion?.item_id` presente e string — **acesso direto de
-     propósito**: `getFlag("companion", ...)` valida escopo contra módulos
-     instalados e `"companion"` não é um (HIPÓTESE de framework que o getFlag
-     lançaria; o acesso direto é seguro nos dois cenários);
-  4. se `game.users.activeGM` existir e não for este cliente, ignora (dois
-     GMs logados → um só reporta).
-  Passando tudo: `console.log("... | equip detectado: actor=... item=...
-  equipped=...")`. Sem HTTP neste passo.
-- **`main.js`** — import + `registerEquipWatcher()` no fim do bloco GM do
-  `ready` (`main.js:12` barra jogadores antes). Nada do fluxo atual muda.
+Extra: equipar VIA Companion hoje nem chega ao Foundry em tempo real (só no
+re-sync manual do inventário, que agora CARREGA o equipped — Fase B1 — e
+chega como create com token+synced → ignorado). Rate-limit da edge é o
+para-raios final.
 
-## 7. HIPÓTESES que SÓ o teste ao vivo confirma
+## 4. GO-LIVE — o que o Bruno precisa fazer (ordem)
 
-| # | Hipótese | Sintoma se falhar | Como inspecionar |
-|---|---|---|---|
-| H1 | Toggle de equip na ficha dnd5e dispara `updateItem` com `changes.system.equipped` boolean | Nenhum `equip detectado` no console ao equipar | `Hooks.on("updateItem", console.log)` no console e togglar |
-| H2 | `flags.companion.item_id` sobrevive à persistência (core não descarta escopo desconhecido) | Idem — filtro 3 barra tudo | `game.actors.get(ID).items.contents.map(i=>i.flags)` no console |
-| H3 | `game.users.activeGM` existe no Foundry v13/14 | Nenhum (código defensivo: `undefined` → segue) | `game.users.activeGM` no console |
-| H4 | (§3) itens `loot` não têm toggle de equipar na ficha | Não tem O QUE equipar → feature parada até decisão A/B | Abrir a ficha e procurar o ícone de equipar num item synced |
+1. **SQL manual** (Dashboard → SQL Editor) — migration
+   `20260711000100_impl35_items_foundry_item_id.sql`:
+   ```sql
+   alter table public.items
+     add column if not exists foundry_item_id text;
 
-## 8. Roteiro de teste do PASSO 1
+   create index if not exists items_foundry_item_id_idx
+     on public.items (foundry_item_id)
+     where foundry_item_id is not null;
+   ```
+2. **Secret** (destranca o 503):
+   `supabase secrets set FOUNDRY_INBOUND_KEY=<chave forte>` (ou Dashboard →
+   Edge Functions → Secrets). Guarde a chave — vai nas settings do módulo.
+3. **Redeploy das DUAS edges**:
+   ```
+   supabase functions deploy push-to-foundry --project-ref leziqtoarclocroaqwsp
+   supabase functions deploy foundry-inbound --no-verify-jwt --project-ref leziqtoarclocroaqwsp
+   ```
+   (`--no-verify-jwt` OBRIGATÓRIO na foundry-inbound — hoje ela está
+   deployada assim, FATO verificado; sem isso o gateway barra o módulo com
+   401 antes da função rodar.)
+4. **Módulo no Foundry**: atualizar os arquivos do módulo no PC (release ou
+   cópia manual da branch) e, nas settings do módulo (como GM):
+   - *URL de Entrada do Companion*: já vem com o default certo
+     (`https://leziqtoarclocroaqwsp.supabase.co/functions/v1/foundry-inbound`)
+   - *Chave de Entrada do Companion*: a mesma do passo 2.
+5. **Vínculo**: cada PC precisa do `foundry_actor_id` colado na aba
+   Jogadores (como já era).
 
-1. Carregar o mundo como GM → console deve ter
-   `companion-foundry-bridge | equip watcher registrado`.
-2. Equipar/desequipar um item **synced** (com crachá) numa ficha → console
-   deve logar `equip detectado: actor=<id> item=<uuid> equipped=<bool>`.
-3. Se não logar, seguir H1→H2→H4 da tabela acima, nessa ordem.
+## 5. ROTEIRO DE TESTE (solo, no Foundry)
 
-## 9. Pendências fora deste repo (pro go-live)
+Pré: passos do §4 feitos. Console aberto (F12) logado como GM.
 
-- [ ] Decisão Opção A/B do §3 (lado Companion — sem ela não há o que equipar).
-- [ ] Criar o secret `FOUNDRY_INBOUND_KEY` no Supabase (destranca o 503).
-- [ ] Configurar URL + key nas settings do módulo (passo 2) no mundo do Bruno.
+**T0 — carga.** Ao carregar o mundo:
+`companion-foundry-bridge | equip watcher registrado (updateItem + createItem)`.
+
+**T1 — Companion→Foundry (tipos/stats/equipped).**
+1. No Companion, garanta que o PC tem itens (ideal: um do catálogo tipo
+   arma/armadura + um manual), alguns equipados.
+2. Aba Jogadores → enviar inventário.
+3. Na ficha do Foundry: itens com TIPO certo (arma como weapon com dano,
+   armadura com CA), **toggle de equipar presente** e estado de equipado
+   igual ao do Companion. ← mata o bug antigo do "loot".
+4. Console: `game.actors.get("<actorId>").items.contents.map(i => [i.name, i.type, i.flags["companion-foundry-bridge"]])`
+   → cada item synced com `{ synced: true, item_id: "<uuid>" }` (H2).
+
+**T2 — Foundry→Companion (equipar).**
+1. Togglar equip de um item synced na ficha.
+2. Console: `equip → Companion: "<nome>" equipped=true`.
+3. No Companion: `character_items.equipped` daquele item mudou (UI ou
+   SELECT). Latência = 1 request.
+
+**T3 — Foundry→Companion (item novo).**
+1. Arrastar um item qualquer do compêndio pra ficha do PC vinculado.
+2. Console: `item enviado pro Companion: "<nome>" → <uuid> (criado)`.
+3. No Companion: item apareceu no inventário do PC (nome, tipo traduzido,
+   descrição em texto puro, qty). No Foundry o item ganhou o crachá
+   (inspecionar flags como em T1.4).
+4. Togglar equip DESSE item → deve ir pela rota leve (T2), sem duplicar.
+
+**T4 — sync inicial (itens pré-ponte).**
+1. Macro/console como GM:
+   ```js
+   const actor = game.actors.getName("NOME DO PC");
+   game.modules.get("companion-foundry-bridge").api.syncInventory(actor);
+   ```
+2. Notificação `enviando N itens…`; ritmo ~1 item/7s (rate-limit).
+3. Ao fim: `sync inicial ... X enviados, 0 falhas`. Conferir no Companion.
+4. Rodar DE NOVO → `0 elegíveis` (todos com crachá — dedupe funcionando).
+
+**T5 — LOOP DE ECO (o crítico).**
+1. Anote a contagem: `SELECT count(*) FROM character_items WHERE character_id = '<pc>'`
+   (ou conte na UI).
+2. No Companion, reenviar o inventário do PC (botão da aba Jogadores).
+3. No Foundry: itens synced recriados (delete+create). Console NÃO pode
+   mostrar nenhum `item enviado pro Companion` nem `equip → Companion`.
+4. Contagem no Companion IGUAL à do passo 1. Repetir o reenvio 2–3×:
+   contagem estável = eco morto.
+5. Equipar no Foundry (T2) e reenviar inventário de novo: o item volta do
+   Companion JÁ equipado (Fase B1 manda equipped) — sem flip-flop.
+
+**T6 — erros com mensagem clara (opcional).** Com a inboundKey errada de
+propósito: console deve logar `inbound 401: chave errada...`. Sem o secret
+no Supabase: `inbound 503: porta trancada...`.
+
+## 6. HIPÓTESES — o que SÓ o teste confirma
+
+| # | Hipótese | Sintoma se falhar | Inspeção no console |
+|---|----------|-------------------|---------------------|
+| H1 | Toggle de equip dispara `updateItem` com `changes.system.equipped` boolean | T2 não loga nada | `Hooks.on("updateItem", (i,c)=>console.log(c))` e togglar |
+| H2 | `flags` de escopo desconhecido ("companion") sobrevivem à persistência | Só afeta itens ANTIGOS (pré-B1); novos têm o escopo válido | `item.flags` no console |
+| H3 | `game.users.activeGM` existe no v13/14 | Nenhum (código defensivo: `undefined` → segue) | `game.users.activeGM` |
+| H4 | dnd5e aceita os campos que mandamos por tipo (armor.dex, type.value light/medium/heavy/shield, subtipo de consumível, rarity) | Item chega sem o stat, ou o create do actor falha com erro de validação (aparece no console e no log do Worker) | criar 1 item de cada tipo e abrir a ficha |
+| H5 | Options customizadas (`companionBridge`) chegam nos hooks do cliente GM | T5 mostraria upserts durante o re-sync — mas a camada 2 (synced/crachá) segura sozinha | `Hooks.on("createItem",(i,o)=>console.log(o))` e reenviar inventário |
+| H6 | `actor.type === "character"` é o tipo dos PCs no dnd5e v5 | T3 não loga (item ignorado) | `game.actors.getName("PC").type` |
+| H7 | Foundry item ids casam com `/^[A-Za-z0-9]{8,32}$/` (edge valida) | upsert responde 400 `foundry_item_id inválido` | `item.id.length` no console |
+
+## 7. Limitações conhecidas (por design, MVP)
+
+- **Deletar item no Foundry NÃO deleta no Companion** (sem hook deleteItem —
+  decisão de escopo; a edge também não tem rota de delete).
+- Equipar VIA Companion não empurra em tempo real pro Foundry (só no
+  reenvio manual do inventário) — igual antes.
+- Sync inicial é sequencial (~7s/item) por causa do rate-limit da edge.
+- Item do Foundry vira texto no Companion (descrição sem HTML); stats viram
+  resumo curto em `properties` (ex.: `1d8+1 slashing · CA 14`).
+- `types.ts` do Supabase segue sem regenerar — casts existentes intactos.
+
+## 8. Pendência de faxina (depois de validado em prod)
+
+- Comentário antigo em `mapping.ts` (pré-B1) sobre "módulo não preserva
+  flags" já foi corrigido; conferir se `docs/IMPL-35.md` precisa registrar
+  as decisões B1–B3 (não mexi no IMPL-35 — fora do escopo desta sessão).
