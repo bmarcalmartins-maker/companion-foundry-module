@@ -108,32 +108,27 @@ re-sync manual do inventário, que agora CARREGA o equipped — Fase B1 — e
 chega como create com token+synced → ignorado). Rate-limit da edge é o
 para-raios final.
 
-## 4. GO-LIVE — o que o Bruno precisa fazer (ordem)
+## 4. GO-LIVE — estado (2026-07-11)
 
-1. **SQL manual** (Dashboard → SQL Editor) — migration
-   `20260711000100_impl35_items_foundry_item_id.sql`:
-   ```sql
-   alter table public.items
-     add column if not exists foundry_item_id text;
-
-   create index if not exists items_foundry_item_id_idx
-     on public.items (foundry_item_id)
-     where foundry_item_id is not null;
+1. ✅ **Migration aplicada** — `items.foundry_item_id` + índice parcial
+   criados no banco (verificado por SELECT no information_schema).
+2. ⏳ **Secret — ÚNICO passo pendente do Bruno** (não há ferramenta de
+   secrets neste ambiente):
    ```
-2. **Secret** (destranca o 503):
-   `supabase secrets set FOUNDRY_INBOUND_KEY=<chave forte>` (ou Dashboard →
-   Edge Functions → Secrets). Guarde a chave — vai nas settings do módulo.
-3. **Redeploy das DUAS edges**:
+   supabase secrets set FOUNDRY_INBOUND_KEY=<chave> --project-ref leziqtoarclocroaqwsp
    ```
-   supabase functions deploy push-to-foundry --project-ref leziqtoarclocroaqwsp
-   supabase functions deploy foundry-inbound --no-verify-jwt --project-ref leziqtoarclocroaqwsp
-   ```
-   (`--no-verify-jwt` OBRIGATÓRIO na foundry-inbound — hoje ela está
-   deployada assim, FATO verificado; sem isso o gateway barra o módulo com
-   401 antes da função rodar.)
-4. **Módulo no Foundry**: atualizar os arquivos do módulo no PC (release ou
-   cópia manual da branch) e, nas settings do módulo (como GM):
-   - *URL de Entrada do Companion*: já vem com o default certo
+   (ou Dashboard → Edge Functions → Secrets). A chave gerada pra isto foi
+   entregue no chat da sessão de go-live. Até o secret existir, a
+   foundry-inbound responde 503 (inerte por design).
+3. ✅ **Edges deployadas** (via API de management, FATO):
+   - `push-to-foundry` **v6**, verify_jwt: true — Fase B1 no ar.
+   - `foundry-inbound` **v2**, verify_jwt: **false** — Fase B2 no ar.
+   O bundle compilou (eszip gerado) = sem erro de sintaxe/import.
+   Smoke test HTTP não foi possível da sessão (proxy bloqueia o domínio) —
+   coberto pelo T6 do roteiro.
+4. ⏳ **Módulo no Foundry**: atualizar os arquivos no PC (branch
+   `claude/companion-foundry-bridge-6kstk8`) e, nas settings (como GM):
+   - *URL de Entrada do Companion*: default já certo
      (`https://leziqtoarclocroaqwsp.supabase.co/functions/v1/foundry-inbound`)
    - *Chave de Entrada do Companion*: a mesma do passo 2.
 5. **Vínculo**: cada PC precisa do `foundry_actor_id` colado na aba
