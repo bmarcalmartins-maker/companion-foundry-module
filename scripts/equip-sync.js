@@ -150,6 +150,10 @@ function buildUpsertPayload(item, actor) {
     foundry_item_id: item.id,
     name: item.name ?? "Item",
     type: item.type ?? "",
+    // Subtipo dnd5e (system.type.value): pra armadura é "light"/"medium"/
+    // "heavy"/"shield"; pra equipamento genérico é "trinket"/"clothing"/etc.
+    // A edge usa isso pra separar armadura de verdade de tralha (Bloco 2).
+    subtype: item.system?.type?.value ?? "",
     description: item.system?.description?.value ?? "",
     stats: statsSummary(item),
     img: item.img ?? "",
