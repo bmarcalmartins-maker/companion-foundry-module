@@ -23,7 +23,13 @@ jobs:
 
       - name: Derivar versão da tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        # Tira o 'v' e tolera um ponto sobrando (tag 'v.1.2.0' → '1.2.0'), pra um
+        # erro de digitação na tag não gerar version inválida no module.json (o
+        # Foundry rejeita e não oferece o update).
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          V="${V#.}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Gravar a versão no module.json
         # Mantém a versão do manifesto igual à tag, pra detecção de update do Foundry.
