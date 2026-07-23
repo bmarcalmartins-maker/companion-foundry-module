@@ -6,6 +6,18 @@ const HEARTBEAT_MS = 45_000;
 const MAX_LOGS = 50;
 /** Show a reconnect toast on the 1st attempt of a down cycle, then every Nth. */
 const NOTIFY_EVERY_ATTEMPTS = 5;
+/** System SRD pack — wins name collisions when resolving `compendium_hint`. */
+const SYSTEM_PACK = "dnd5e.items";
+
+/** Normalize a name for exact compendium matching: lowercase, strip accents, spaces→hyphens. */
+function slugify(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 /**
  * WebSocket client that connects the Foundry GM session to the bridge Worker.
@@ -28,6 +40,8 @@ export class BridgeClient {
     this.reconnectTimer = null;
     this.heartbeatTimer = null;
     this.logs = [];
+    /** @type {Promise<Map<string, {pack: object, id: string}>>|null} lazy slug→entry index */
+    this.compendiumIndex = null;
   }
 
   get bridgeUrl() {
@@ -226,6 +240,106 @@ export class BridgeClient {
   }
 
   /* -------------------------------------------- */
+  /*  Compendium resolution                       */
+  /* -------------------------------------------- */
+
+  /**
+   * Build (lazily, once per session) a slug → {pack, id} index over every Item
+   * compendium. The system SRD pack wins name collisions, other dnd5e packs come
+   * next, world/module packs last. Reload (F5) picks up newly installed packs.
+   */
+  #getCompendiumIndex() {
+    this.compendiumIndex ??= this.#buildCompendiumIndex().catch((err) => {
+      this.compendiumIndex = null; // allow retry on next sync
+      throw err;
+    });
+    return this.compendiumIndex;
+  }
+
+  async #buildCompendiumIndex() {
+    const priority = (p) => (p.collection === SYSTEM_PACK ? 0 : p.metadata?.packageName === "dnd5e" ? 1 : 2);
+    const packs = game.packs.filter((p) => p.documentName === "Item").sort((a, b) => priority(a) - priority(b));
+
+    const index = new Map();
+    for (const pack of packs) {
+      try {
+        for (const entry of await pack.getIndex()) {
+          const slug = slugify(entry.name);
+          if (slug && !index.has(slug)) index.set(slug, { pack, id: entry._id });
+        }
+      } catch (err) {
+        this.log(`compendium index failed for ${pack.collection}: ${err?.message ?? err}`);
+      }
+    }
+    this.log(`compendium index built (${index.size} items)`);
+    return index;
+  }
+
+  /**
+   * Resolve a payload item against the compendiums via its `compendium_hint`.
+   * Exact slug match only — source_key first, then name (equipping the wrong
+   * item is worse than a shell). On a match, returns the full compendium item
+   * (system, ActiveEffects, activities) with the Companion's fields on top;
+   * returns null to fall back to the payload shell.
+   */
+  async #resolveFromCompendium(item) {
+    const hint = item?.flags?.[MODULE_ID]?.compendium_hint;
+    if (!hint) return null;
+
+    const index = await this.#getCompendiumIndex();
+    const match =
+      (hint.source_key ? index.get(slugify(hint.source_key)) : null) ??
+      (hint.name ? index.get(slugify(hint.name)) : null);
+    if (!match) return null;
+
+    const doc = await match.pack.getDocument(match.id);
+    if (!doc) return null;
+
+    const data = doc.toObject();
+    delete data._id;
+
+    // Companion fields win over the compendium copy:
+    if (item.name) data.name = item.name; // display name (may be PT)
+    if (item.system?.quantity !== undefined && "quantity" in (data.system ?? {})) {
+      data.system.quantity = item.system.quantity;
+    }
+    if (item.system?.equipped !== undefined && "equipped" in (data.system ?? {})) {
+      data.system.equipped = item.system.equipped;
+    }
+    // Keep compendium art unless the Companion sent a non-placeholder image of its own.
+    if (item.img && !item.img.startsWith("icons/svg/")) data.img = item.img;
+    // Payload flags merge on top — item_id/synced markers drive idempotent re-sync.
+    data.flags = foundry.utils.mergeObject(data.flags ?? {}, item.flags ?? {}, { inplace: false });
+
+    return data;
+  }
+
+  /**
+   * Resolve compendium hints (when present) then tag everything as bridge-managed.
+   * Any miss or error falls back to the payload shell for that item — nothing breaks.
+   */
+  async #prepareItems(items) {
+    if (!Array.isArray(items)) return items;
+    const prepared = [];
+    for (const item of items) {
+      let resolved = null;
+      const hint = item?.flags?.[MODULE_ID]?.compendium_hint;
+      if (hint) {
+        try {
+          resolved = await this.#resolveFromCompendium(item);
+        } catch (err) {
+          console.error(`${MODULE_ID} | compendium resolve failed for "${item?.name}"`, err);
+        }
+        console.log(
+          `${MODULE_ID} | item "${item?.name}" hint=${hint.source_key ?? slugify(hint.name)} → ${resolved ? "matched" : "fallback"}`
+        );
+      }
+      prepared.push(resolved ?? item);
+    }
+    return this.#tagItems(prepared);
+  }
+
+  /* -------------------------------------------- */
   /*  Actor handlers                              */
   /* -------------------------------------------- */
 
@@ -256,7 +370,7 @@ export class BridgeClient {
   async #createActor(payload) {
     if (!payload || typeof payload !== "object") throw new Error("missing actor payload");
     const data = foundry.utils.deepClone(payload);
-    if (Array.isArray(data.items)) data.items = this.#tagItems(data.items);
+    if (Array.isArray(data.items)) data.items = await this.#prepareItems(data.items);
     const actor = await Actor.implementation.create(data, { keepId: false, companionBridge: true });
     if (!actor) throw new Error("actor creation returned no document");
     return { actor_id: actor.id };
@@ -274,7 +388,7 @@ export class BridgeClient {
     if (Array.isArray(items)) {
       const syncedIds = actor.items.filter((i) => i.getFlag(MODULE_ID, "synced")).map((i) => i.id);
       if (syncedIds.length) await actor.deleteEmbeddedDocuments("Item", syncedIds, { companionBridge: true });
-      await actor.createEmbeddedDocuments("Item", this.#tagItems(items), { companionBridge: true });
+      await actor.createEmbeddedDocuments("Item", await this.#prepareItems(items), { companionBridge: true });
     }
     return { actor_id: actor.id };
   }
