@@ -384,11 +384,63 @@ export class BridgeClient {
     const { items, ...actorData } = payload ?? {};
     if (Object.keys(actorData).length) await actor.update(actorData, { companionBridge: true });
 
-    // Replace only previously bridge-synced items; leave GM-added items untouched.
     if (Array.isArray(items)) {
+      /*
+       * ITEM NATIVO DO FOUNDRY QUE JÁ TEM CRACHÁ = o MESMO item da linha do
+       * Companion, não um item a mais.
+       *
+       * Ele chegou aqui pelo caminho de volta (equip-sync `item.upsert`), e o
+       * Companion guardou uma linha para ele. Como NÃO é `synced`, o passo de
+       * baixo não o apaga — e sem esta distinção o payload criaria uma CÓPIA
+       * ao lado do original, toda vez. Com o push virando automático (gatilho
+       * no banco), isso passaria a acontecer a cada mudança de inventário.
+       *
+       * Nele a gente ATUALIZA NO LUGAR, e só o que o Companion manda: se está
+       * equipado e quantas unidades. Nome, arte, efeitos e activities são do
+       * item de verdade do Foundry — que é justamente o que faz o dnd5e
+       * aplicar CA e bônus ao equipar. Substituir seria trocar o item bom pela
+       * casca.
+       */
+      const nativosPorCracha = new Map();
+      for (const existente of actor.items) {
+        if (existente.getFlag(MODULE_ID, "synced")) continue;
+        const cracha =
+          existente.getFlag(MODULE_ID, "item_id") ?? existente.flags?.companion?.item_id ?? null;
+        if (cracha) nativosPorCracha.set(cracha, existente);
+      }
+
+      const paraCriar = [];
+      const paraAtualizar = [];
+      for (const item of items) {
+        const cracha = item?.flags?.[MODULE_ID]?.item_id ?? item?.flags?.companion?.item_id ?? null;
+        const nativo = cracha ? nativosPorCracha.get(cracha) : null;
+        if (!nativo) {
+          paraCriar.push(item);
+          continue;
+        }
+        const mudanca = { _id: nativo.id };
+        if (item?.system?.equipped !== undefined && "equipped" in (nativo.system ?? {})) {
+          mudanca["system.equipped"] = item.system.equipped;
+        }
+        if (item?.system?.quantity !== undefined && "quantity" in (nativo.system ?? {})) {
+          mudanca["system.quantity"] = item.system.quantity;
+        }
+        // Só vale a viagem se houver algo além do _id.
+        if (Object.keys(mudanca).length > 1) paraAtualizar.push(mudanca);
+      }
+
+      // Troca só o que ESTE módulo criou; o que o GM pôs à mão fica de pé.
       const syncedIds = actor.items.filter((i) => i.getFlag(MODULE_ID, "synced")).map((i) => i.id);
       if (syncedIds.length) await actor.deleteEmbeddedDocuments("Item", syncedIds, { companionBridge: true });
-      await actor.createEmbeddedDocuments("Item", await this.#prepareItems(items), { companionBridge: true });
+      if (paraAtualizar.length) {
+        await actor.updateEmbeddedDocuments("Item", paraAtualizar, { companionBridge: true });
+      }
+      if (paraCriar.length) {
+        await actor.createEmbeddedDocuments("Item", await this.#prepareItems(paraCriar), { companionBridge: true });
+      }
+      this.log(
+        `inventário: ${paraCriar.length} criado(s), ${paraAtualizar.length} nativo(s) atualizado(s) no lugar, ${syncedIds.length} substituído(s)`
+      );
     }
     return { actor_id: actor.id };
   }

@@ -202,12 +202,35 @@ no Supabase: `inbound 503: porta trancada...`.
 | H6 | `actor.type === "character"` é o tipo dos PCs no dnd5e v5 | T3 não loga (item ignorado) | `game.actors.getName("PC").type` |
 | H7 | Foundry item ids casam com `/^[A-Za-z0-9]{8,32}$/` (edge valida) | upsert responde 400 `foundry_item_id inválido` | `item.id.length` no console |
 
+## 6.5 Item nativo com crachá: atualizar no lugar, nunca duplicar (25/07)
+
+O `#updateActor` apagava os itens `synced` e criava TODOS os do payload. Só que
+o payload traz uma linha para cada `character_items` — inclusive as que nasceram
+de um item NATIVO do Foundry, que chegou aqui pelo `item.upsert` e recebeu o
+crachá. Esse item não é `synced`, então não era apagado no passo 1 — e o passo 2
+criava uma **cópia dele ao lado do original**.
+
+Enquanto o push era um botão, isso acontecia de vez em quando. Com o gatilho no
+banco (Companion, IMPL-40 parte 2) o push virou automático a cada mudança de
+inventário, e a duplicação passaria a ser garantida.
+
+Agora o `#updateActor` separa em três: apaga os `synced`, **atualiza no lugar**
+os nativos que casam por crachá, e cria só o resto. No nativo mexemos apenas em
+`system.equipped` e `system.quantity` — nome, arte, ActiveEffects e activities
+são do item de verdade do Foundry, que é justamente o que faz o dnd5e aplicar CA
+e bônus ao equipar. Trocá-lo pela casca do payload seria perder isso.
+
+É também o que fecha o pedido do Bruno: equipar no Companion passa a virar a
+chave `equipped` **do item que já existe** na ficha, com os efeitos dele.
+
+⚠️ Não testado em Foundry real (nenhum Foundry rodou na sessão de
+implementação). Sai numa release nova — o `module.json` do repo fica em 1.2.0
+de propósito, quem escreve a versão é o workflow de release a partir da tag.
+
 ## 7. Limitações conhecidas (por design, MVP)
 
 - **Deletar item no Foundry NÃO deleta no Companion** (sem hook deleteItem —
   decisão de escopo; a edge também não tem rota de delete).
-- Equipar VIA Companion não empurra em tempo real pro Foundry (só no
-  reenvio manual do inventário) — igual antes.
 - Sync inicial é sequencial (~7s/item) por causa do rate-limit da edge.
 - Item do Foundry vira texto no Companion (descrição sem HTML); stats viram
   resumo curto em `properties` (ex.: `1d8+1 slashing · CA 14`).
