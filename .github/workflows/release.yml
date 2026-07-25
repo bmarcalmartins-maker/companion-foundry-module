@@ -10,6 +10,15 @@ on:
   push:
     tags:
       - "v*"
+  # Saída manual: quando não dá pra empurrar a tag (proxy de git que recusa
+  # push de tag, por exemplo), dispara por aqui informando a versão. O release
+  # cria a tag a partir do commit em que o workflow rodar.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão a publicar, com o v (ex.: v1.4.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -26,10 +35,16 @@ jobs:
         # Tira o 'v' e tolera um ponto sobrando (tag 'v.1.2.0' → '1.2.0'), pra um
         # erro de digitação na tag não gerar version inválida no module.json (o
         # Foundry rejeita e não oferece o update).
+        # No disparo manual a origem é o input; no push de tag, o próprio ref.
+        env:
+          ENTRADA: ${{ inputs.version }}
         run: |
-          V="${GITHUB_REF_NAME#v}"
+          TAG="${ENTRADA:-$GITHUB_REF_NAME}"
+          V="${TAG#v}"
           V="${V#.}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "publicando $TAG (version $V)"
 
       - name: Gravar a versão no module.json
         # Mantém a versão do manifesto igual à tag, pra detecção de update do Foundry.
@@ -56,7 +71,10 @@ jobs:
       - name: Publicar release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          # tag_name explícito: no disparo manual não existe ref de tag, e é ele
+          # que faz o release criar a tag a partir deste commit.
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
           files: |
             module.json
             module.zip
