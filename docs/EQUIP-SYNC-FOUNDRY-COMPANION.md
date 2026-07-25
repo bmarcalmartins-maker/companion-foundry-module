@@ -227,6 +227,26 @@ chave `equipped` **do item que já existe** na ficha, com os efeitos dele.
 implementação). Sai numa release nova — o `module.json` do repo fica em 1.2.0
 de propósito, quem escreve a versão é o workflow de release a partir da tag.
 
+## 6.6 Zerar e puxar tudo de novo (25/07)
+
+O `syncInventory` **pula item que já tem crachá** — é o que impede reenvio
+duplicado no uso normal. Consequência: apagar as linhas do PC no Companion e
+mandar o sync inicial **não traria nada**, porque os itens daqui continuariam
+carimbados com ids que não existem mais do outro lado.
+
+Por isso existe o `resetLink`: apaga as cópias criadas pelo bridge (`synced`) e
+limpa o crachá dos itens NATIVOS, que ficam intactos no resto. Ordem:
+
+```js
+const api = game.modules.get("companion-foundry-bridge").api;
+const actor = canvas.tokens.controlled[0]?.actor ?? game.actors.getName("Talaniel");
+await api.resetLink(actor);      // 1. solta o vínculo aqui
+// 2. apagar as linhas desse PC no Companion (character_items)
+await api.syncInventory(actor);  // 3. reenvia tudo, ~7s por item
+```
+
+O passo 2 é do lado do Companion e é destrutivo — não sai daqui.
+
 ## 7. Limitações conhecidas (por design, MVP)
 
 - **Deletar item no Foundry NÃO deleta no Companion** (sem hook deleteItem —

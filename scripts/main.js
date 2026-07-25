@@ -1,6 +1,6 @@
 import { MODULE_ID, registerSettings } from "./settings.js";
 import { BridgeClient } from "./bridge-client.js";
-import { registerEquipWatcher, syncActorInventory } from "./equip-sync.js";
+import { registerEquipWatcher, syncActorInventory, resetActorLink } from "./equip-sync.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -23,6 +23,10 @@ Hooks.once("ready", () => {
     // Sync inicial Foundry→Companion (macro/console):
     // game.modules.get("companion-foundry-bridge").api.syncInventory(actor)
     syncInventory: (actor) => syncActorInventory(actor),
+    // Solta o vínculo deste actor (apaga cópias do bridge, limpa crachás) para
+    // poder reenviar o inventário do zero. Rodar ANTES de zerar o Companion:
+    // game.modules.get("companion-foundry-bridge").api.resetLink(actor)
+    resetLink: (actor) => resetActorLink(actor),
   };
 
   if (game.settings.get(MODULE_ID, "autoConnect")) client.connect();

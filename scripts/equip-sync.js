@@ -290,3 +290,52 @@ export async function syncActorInventory(actor) {
   ui.notifications[failed ? "warn" : "info"](`Companion: ${summary}`);
   return { sent, failed, total: pending.length };
 }
+
+/**
+ * Desfaz o vínculo deste actor com o Companion, deixando o inventário do
+ * Foundry pronto para ser enviado do zero.
+ *
+ * Existe porque o `syncActorInventory` PULA item que já tem crachá. Se o
+ * Companion for zerado do outro lado (apagar as linhas de character_items), os
+ * itens daqui continuam carimbados com ids que não existem mais — e o sync
+ * inicial não mandaria nada. Este passo tira os carimbos.
+ *
+ * Faz duas coisas:
+ *  - APAGA os itens criados pelo bridge (`synced`): eles são cópias do que o
+ *    Companion mandou um dia, não itens do Foundry.
+ *  - LIMPA o crachá dos itens NATIVOS, que ficam intactos no resto.
+ *
+ * Uso (macro ou console, como GM), na ordem:
+ *   const api = game.modules.get("companion-foundry-bridge").api;
+ *   await api.resetLink(actor);      // 1. solta o vínculo aqui
+ *   // 2. apagar as linhas do PC no Companion
+ *   await api.syncInventory(actor);  // 3. manda tudo de novo (~7s por item)
+ */
+export async function resetActorLink(actor) {
+  if (!(actor instanceof Actor)) {
+    ui.notifications.error("Companion: passe um Actor (ex.: game.actors.getName(\"Nome\")).");
+    return null;
+  }
+
+  const doBridge = actor.items.filter((i) => isBridgeManaged(i)).map((i) => i.id);
+  if (doBridge.length) {
+    await actor.deleteEmbeddedDocuments("Item", doBridge, { companionBridge: true });
+  }
+
+  // Os dois escopos: o válido e o legado "companion" (itens pré-B1).
+  const limpar = actor.items
+    .filter((i) => getCompanionItemId(i))
+    .map((i) => ({
+      _id: i.id,
+      [`flags.${MODULE_ID}.-=item_id`]: null,
+      "flags.companion.-=item_id": null,
+    }));
+  if (limpar.length) {
+    await actor.updateEmbeddedDocuments("Item", limpar, { companionBridge: true });
+  }
+
+  const resumo = `vínculo solto em "${actor.name}": ${doBridge.length} cópia(s) do bridge apagada(s), ${limpar.length} crachá(s) limpo(s)`;
+  console.log(`${MODULE_ID} | ${resumo}`);
+  ui.notifications.info(`Companion: ${resumo}`);
+  return { removidos: doBridge.length, limpos: limpar.length };
+}
