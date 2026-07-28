@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./settings.js";
+import { listItems, listPacks } from "./compendium.js";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -212,7 +213,7 @@ export class BridgeClient {
   }
 
   async #handleCommand(cmd) {
-    const { request_id, action, actor_id, payload } = cmd;
+    const { request_id, action, actor_id, payload, params } = cmd;
     this.log(`← ${action}${actor_id ? ` (${actor_id})` : ""}`);
     try {
       let result;
@@ -225,6 +226,15 @@ export class BridgeClient {
           break;
         case "actor.delete":
           result = await this.#deleteActor(actor_id);
+          break;
+        // LEITURA (FASE 1). Devolvem sob `data` — é o campo que o Durable
+        // Object repassa ao Companion; `actor_id` (usado pelos actor.*) não
+        // existe aqui e some do JSON sozinho.
+        case "compendium.packs":
+          result = { data: await listPacks() };
+          break;
+        case "compendium.items":
+          result = { data: await listItems(params ?? {}) };
           break;
         default:
           throw new Error(`unknown action: ${action}`);

@@ -183,10 +183,30 @@ function buildUpsertPayload(item, actor) {
     description: item.system?.description?.value ?? "",
     stats: statsSummary(item),
     ...combatStats(item), // Bloco 3: damage_dice/damage_type/ac_base/range estruturados
+    // IMPL-41: ActiveEffects CRUS. `toObject()` serializa a Collection de
+    // effects no shape nativo; nada aqui achata nem traduz — quem interpreta é
+    // o Companion. A edge valida (array, teto de itens e de bytes) antes de
+    // gravar em items.foundry_effects.
+    effects: itemEffects(item),
     img: item.img ?? "",
     qty: item.system?.quantity ?? 1,
     equipped: item.system?.equipped === true,
   };
+}
+
+/**
+ * `effects` do item como array simples. Defensivo: item sem effects, ou
+ * `toObject()` indisponível por qualquer motivo, devolve [] em vez de quebrar
+ * o upsert inteiro — o item ainda vale sem os efeitos.
+ */
+function itemEffects(item) {
+  try {
+    const arr = item?.toObject?.()?.effects;
+    return Array.isArray(arr) ? arr : [];
+  } catch (err) {
+    console.warn(`${MODULE_ID} | falha ao serializar effects de "${item?.name}":`, err);
+    return [];
+  }
 }
 
 /**

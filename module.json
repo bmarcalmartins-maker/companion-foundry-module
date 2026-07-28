@@ -2,7 +2,7 @@
   "id": "companion-foundry-bridge",
   "title": "Companion Foundry Bridge",
   "description": "Bridges Companion app to Foundry VTT for live NPC sync.",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "compatibility": {
     "minimum": "13",
     "verified": "14",
