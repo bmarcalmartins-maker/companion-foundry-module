@@ -198,11 +198,22 @@ function buildUpsertPayload(item, actor) {
  * `effects` do item como array simples. Defensivo: item sem effects, ou
  * `toObject()` indisponível por qualquer motivo, devolve [] em vez de quebrar
  * o upsert inteiro — o item ainda vale sem os efeitos.
+ * Teto de tamanho: a edge foundry-inbound corta o BODY em 32 KiB antes do
+ * parse, então effects gordos (itens DDB carregam HTML e flags ddbimporter/
+ * midi-qol/dae em cada effect) fariam o upsert inteiro tomar 413. Acima de
+ * MAX_EFFECTS_JSON_LENGTH degradamos: o item sincroniza sem os efeitos.
  */
+const MAX_EFFECTS_JSON_LENGTH = 12_000;
+
 function itemEffects(item) {
   try {
     const arr = item?.toObject?.()?.effects;
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    if (JSON.stringify(arr).length > MAX_EFFECTS_JSON_LENGTH) {
+      console.warn(`${MODULE_ID} | effects de "${item?.name}" passam de ${MAX_EFFECTS_JSON_LENGTH} bytes — enviando item sem effects`);
+      return [];
+    }
+    return arr;
   } catch (err) {
     console.warn(`${MODULE_ID} | falha ao serializar effects de "${item?.name}":`, err);
     return [];
