@@ -2,6 +2,7 @@ import { MODULE_ID, registerSettings } from "./settings.js";
 import { BridgeClient } from "./bridge-client.js";
 import { registerEquipWatcher, syncActorInventory, resetActorLink } from "./equip-sync.js";
 import { listItems, listPacks } from "./compendium.js";
+import { registerLiveSync } from "./live-sync.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -43,4 +44,6 @@ Hooks.once("ready", () => {
   // Foundry→Companion (bidirecional): observa equip/desequip de itens synced.
   // GM-only por estar dentro deste bloco — clientes de jogador nunca registram.
   registerEquipWatcher();
+  // IMPL-47 v1.7.0: a ficha e os efeitos vão ao Companion quando mudam AQUI.
+  registerLiveSync();
 });

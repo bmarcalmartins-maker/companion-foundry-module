@@ -63,7 +63,7 @@ const INITIAL_SYNC_DELAY_MS = 7_000;
  * getFlag ("companion" não é módulo instalado → lançaria erro); acesso
  * direto ao objeto é seguro nos dois cenários.
  */
-function getCompanionItemId(item) {
+export function getCompanionItemId(item) {
   const own = item?.getFlag?.(MODULE_ID, "item_id");
   if (typeof own === "string" && own) return own;
   const legacy = item?.flags?.companion?.item_id;
@@ -76,7 +76,7 @@ function isBridgeManaged(item) {
 }
 
 /** Dois GMs logados → só o activeGM reporta (sem evento duplicado). */
-function isReportingGm() {
+export function isReportingGm() {
   return !(game.users.activeGM && game.users.activeGM.id !== game.user.id);
 }
 
@@ -90,7 +90,7 @@ function isReportingGm() {
  *  401 chave errada · 404 actor/item não vinculado · 413 payload grande ·
  *  429 rate limit · 503 porta trancada (secret não criado no Supabase).
  */
-async function postInbound(payload) {
+export async function postInbound(payload, { silencioso404 = false } = {}) {
   const url = game.settings.get(MODULE_ID, "inboundUrl");
   const key = game.settings.get(MODULE_ID, "inboundKey");
   if (!url || !key) {
@@ -119,8 +119,12 @@ async function postInbound(payload) {
       429: "rate limit da edge — reduza o ritmo",
       503: "porta trancada — secret FOUNDRY_INBOUND_KEY não criado no Supabase",
     }[res.status] ?? (body?.error ?? "erro desconhecido");
-    console.error(`${MODULE_ID} | inbound ${res.status}: ${why}`, payload);
-    return null;
+    // 404 de actor NÃO vinculado é o estado normal de todo personagem que não
+    // é PC do Companion; quem pede silêncio trata sozinho.
+    if (!(silencioso404 && res.status === 404)) {
+      console.error(`${MODULE_ID} | inbound ${res.status}: ${why}`, payload?.op ?? "equip");
+    }
+    return { ok: false, status: res.status };
   }
   return body;
 }
@@ -205,7 +209,7 @@ function buildUpsertPayload(item, actor) {
  */
 const MAX_EFFECTS_JSON_LENGTH = 12_000;
 
-function itemEffects(item) {
+export function itemEffects(item) {
   try {
     const arr = item?.toObject?.()?.effects;
     if (!Array.isArray(arr)) return [];
@@ -240,43 +244,39 @@ async function upsertItem(item, actor) {
 /* -------------------------------------------- */
 
 /**
- * IMPL-47 — devolve ao Companion os ActiveEffects dos itens que o bridge
- * ACABOU de criar neste actor.
+ * IMPL-47 — manda ao Companion os ActiveEffects de itens deste actor.
  *
- * O furo: item nascido no Companion chega aqui como casca + `compendium_hint`,
- * o bridge-client o resolve pelo compêndio e ele ganha os efeitos do dnd5e —
- * mas a volta só mandava `equipped`, e o Companion nunca soube do bônus. Agora,
- * logo depois do createEmbeddedDocuments, os effects de cada item criado vão
- * numa chamada só (`op: "item.effects"`). A edge grava SÓ onde o Companion
- * ainda não tem nada (foundry_effects nulo).
+ * O FOUNDRY É A VERDADE (Bruno, 23/09: "se o foundry mandar a info, tem que
+ * aparecer e o companion ficar sabendo"). Então vai o que o item TEM aqui,
+ * inclusive lista vazia, e a edge grava por cima do que o Companion tinha.
  *
- * Três filtros para não reenviar a cada push (o push recria os itens synced
- * toda vez que o inventário muda):
- *  - item sem crachá do Companion → não há onde gravar;
- *  - flag `has_effects` (o payload do Companion já diz que tem) → pula;
- *  - memória da sessão: o que já foi aceito uma vez não viaja de novo.
- * Item sem nenhum efeito não viaja: "sem bônus registrado" continua sendo a
- * verdade do lado de lá.
+ * Chamado em dois momentos:
+ *  - logo depois do createEmbeddedDocuments do actor.update (item nascido no
+ *    Companion, resolvido pelo compêndio aqui);
+ *  - quando um ActiveEffect de item muda (live-sync.js).
+ *
+ * Não reenvia o que não mudou: guarda, por item, o JSON do último envio aceito.
+ * O push recria os itens synced a cada mudança de inventário; sem isto cada
+ * equipar reenviaria os efeitos de tudo.
  */
-const efeitosEnviados = new Set();
+const efeitosEnviados = new Map(); // `${actorId}:${itemId}` -> JSON enviado
 const MAX_EFFECTS_BODY = 24_000; // a edge corta o body em 32 KiB
 
-export async function reportCreatedEffects(actor, createdItems) {
+export async function reportItemEffects(actor, items) {
   try {
     if (!(actor instanceof Actor) || actor.type !== "character") return;
-    if (!Array.isArray(createdItems) || !createdItems.length) return;
+    if (!Array.isArray(items) || !items.length) return;
     if (!isReportingGm()) return;
 
     const pendentes = [];
-    for (const item of createdItems) {
+    for (const item of items) {
       const itemId = getCompanionItemId(item);
       if (!itemId) continue;
-      if (item?.getFlag?.(MODULE_ID, "has_effects") === true) continue;
-      const chave = `${actor.id}:${itemId}`;
-      if (efeitosEnviados.has(chave)) continue;
       const effects = itemEffects(item);
-      if (!effects.length) continue;
-      pendentes.push({ chave, item_id: itemId, effects });
+      const json = JSON.stringify(effects);
+      const chave = `${actor.id}:${itemId}`;
+      if (efeitosEnviados.get(chave) === json) continue;
+      pendentes.push({ chave, json, item_id: itemId, effects });
     }
     if (!pendentes.length) return;
 
@@ -285,7 +285,7 @@ export async function reportCreatedEffects(actor, createdItems) {
     let atual = [];
     let bytes = 0;
     for (const p of pendentes) {
-      const tam = JSON.stringify(p.effects).length + 64;
+      const tam = p.json.length + 64;
       if (atual.length && bytes + tam > MAX_EFFECTS_BODY) {
         lotes.push(atual);
         atual = [];
@@ -297,21 +297,23 @@ export async function reportCreatedEffects(actor, createdItems) {
     if (atual.length) lotes.push(atual);
 
     for (const lote of lotes) {
-      const res = await postInbound({
-        op: "item.effects",
-        actor_id: actor.id,
-        items: lote.map(({ item_id, effects }) => ({ item_id, effects })),
-      });
+      const res = await postInbound(
+        { op: "item.effects", actor_id: actor.id, items: lote.map(({ item_id, effects }) => ({ item_id, effects })) },
+        { silencioso404: true },
+      );
       if (res?.ok) {
-        lote.forEach((p) => efeitosEnviados.add(p.chave));
+        lote.forEach((p) => efeitosEnviados.set(p.chave, p.json));
         console.log(`${MODULE_ID} | efeitos → Companion: ${lote.length} item(ns), ${res.gravados ?? 0} gravado(s)`);
       }
     }
   } catch (err) {
     // Nunca derruba o sync de inventário: o item já está no actor.
-    console.warn(`${MODULE_ID} | falha ao devolver efeitos ao Companion:`, err);
+    console.warn(`${MODULE_ID} | falha ao mandar efeitos ao Companion:`, err);
   }
 }
+
+/** Nome antigo (v1.6.0), mantido para o bridge-client. */
+export const reportCreatedEffects = reportItemEffects;
 
 /* -------------------------------------------- */
 /*  Hooks                                       */
