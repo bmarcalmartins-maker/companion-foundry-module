@@ -34,8 +34,12 @@ import { getCompanionItemId, isReportingGm, postInbound, reportItemEffects } fro
 
 const DEBOUNCE_MS = 800;
 const NAO_VINCULADO_MS = 10 * 60 * 1000;
-/** A edge corta o body em 32 KiB; os efeitos dos equipados são o que pesa. */
-const MAX_SNAPSHOT_JSON = 28_000;
+/**
+ * A edge corta o body em 128 KiB. Com os efeitos enxutos (`effect-shape.js`) a
+ * ficha de um personagem fica em poucos KB; o teto aqui é só a rede de
+ * segurança, e passar dele é AVISADO no console — nunca corte em silêncio.
+ */
+const MAX_SNAPSHOT_JSON = 120_000;
 
 const timers = new Map(); // actorId -> timeout
 const naoVinculado = new Map(); // actorId -> até quando ignorar
@@ -56,10 +60,20 @@ async function enviarFicha(actor) {
     console.warn(`${MODULE_ID} | não consegui ler a ficha de "${actor.name}":`, err);
     return;
   }
-  // Grande demais: vai sem os efeitos dos equipados (os números calculados,
-  // que são o que o painel mostra, continuam inteiros).
-  if (JSON.stringify(snapshot).length > MAX_SNAPSHOT_JSON) {
+  // Rede de segurança: grande demais, vai sem os efeitos dos equipados (os
+  // números calculados, que são o que o painel mostra, continuam inteiros).
+  // Se nem assim couber, não manda — ficha cortada seria ficha errada.
+  let tamanho = JSON.stringify(snapshot).length;
+  if (tamanho > MAX_SNAPSHOT_JSON) {
+    console.warn(
+      `${MODULE_ID} | ficha de "${actor.name}" com ${tamanho} caracteres (teto ${MAX_SNAPSHOT_JSON}) — enviando sem os efeitos dos itens equipados`,
+    );
     snapshot = { ...snapshot, equipped: (snapshot.equipped ?? []).map(({ effects, ...resto }) => resto) };
+    tamanho = JSON.stringify(snapshot).length;
+    if (tamanho > MAX_SNAPSHOT_JSON) {
+      console.warn(`${MODULE_ID} | ficha de "${actor.name}" ainda com ${tamanho} caracteres — não enviada`);
+      return;
+    }
   }
 
   const res = await postInbound({ op: "actor.snapshot", actor_id: actor.id, snapshot }, { silencioso404: true });

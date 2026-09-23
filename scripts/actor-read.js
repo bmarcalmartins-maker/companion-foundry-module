@@ -22,6 +22,8 @@
  * a tela do Companion mostra "—", nunca um valor inventado.
  */
 
+import { efeitoEnxuto } from "./effect-shape.js";
+
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 
 /** Número finito ou undefined (o JSON some com a chave). */
@@ -34,33 +36,6 @@ function saveDe(abl) {
   const s = abl?.save;
   if (typeof s === "number") return num(s);
   return num(s?.value);
-}
-
-/** ActiveEffect enxuto, no MESMO shape que o Companion já lê (system.changes). */
-function efeitoEnxuto(effect) {
-  let raw = null;
-  try {
-    raw = effect.toObject();
-  } catch {
-    raw = null;
-  }
-  const changes = raw?.system?.changes ?? raw?.changes ?? effect?.changes ?? [];
-  return {
-    _id: effect.id,
-    name: effect.name ?? null,
-    disabled: effect.disabled === true,
-    transfer: effect.transfer !== false,
-    // `active` é o veredito do próprio Foundry (desligado OU suprimido = false).
-    active: typeof effect.active === "boolean" ? effect.active : undefined,
-    system: {
-      changes: (Array.isArray(changes) ? changes : []).map((c) => ({
-        key: c?.key,
-        type: c?.type,
-        mode: c?.mode,
-        value: c?.value,
-      })),
-    },
-  };
 }
 
 export function readActor(actorId, moduleId) {

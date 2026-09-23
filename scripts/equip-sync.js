@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./settings.js";
+import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
 
 /**
  * Mão de volta Foundry→Companion (edge function foundry-inbound).
@@ -115,7 +116,7 @@ export async function postInbound(payload, { silencioso404 = false } = {}) {
     const why = {
       401: "chave errada — inboundKey ≠ FOUNDRY_INBOUND_KEY do Supabase",
       404: "actor não vinculado a PC (foundry_actor_id) ou item fora do inventário",
-      413: "payload grande demais (limite 32 KiB da edge)",
+      413: "payload grande demais (limite 128 KiB da edge)",
       429: "rate limit da edge — reduza o ritmo",
       503: "porta trancada — secret FOUNDRY_INBOUND_KEY não criado no Supabase",
     }[res.status] ?? (body?.error ?? "erro desconhecido");
@@ -187,11 +188,9 @@ function buildUpsertPayload(item, actor) {
     description: item.system?.description?.value ?? "",
     stats: statsSummary(item),
     ...combatStats(item), // Bloco 3: damage_dice/damage_type/ac_base/range estruturados
-    // IMPL-41: ActiveEffects CRUS. `toObject()` serializa a Collection de
-    // effects no shape nativo; nada aqui achata nem traduz — quem interpreta é
-    // o Companion. A edge valida (array, teto de itens e de bytes) antes de
-    // gravar em items.foundry_effects.
-    effects: itemEffects(item),
+    // ActiveEffects enxutos (v1.7.1). `undefined` (não sei ler) some do JSON,
+    // e a edge não mexe no que o Companion já tinha.
+    effects: itemEffects(item) ?? undefined,
     img: item.img ?? "",
     qty: item.system?.quantity ?? 1,
     equipped: item.system?.equipped === true,
@@ -199,28 +198,33 @@ function buildUpsertPayload(item, actor) {
 }
 
 /**
- * `effects` do item como array simples. Defensivo: item sem effects, ou
- * `toObject()` indisponível por qualquer motivo, devolve [] em vez de quebrar
- * o upsert inteiro — o item ainda vale sem os efeitos.
- * Teto de tamanho: a edge foundry-inbound corta o BODY em 32 KiB antes do
- * parse, então effects gordos (itens DDB carregam HTML e flags ddbimporter/
- * midi-qol/dae em cada effect) fariam o upsert inteiro tomar 413. Acima de
- * MAX_EFFECTS_JSON_LENGTH degradamos: o item sincroniza sem os efeitos.
+ * `effects` do item, ENXUTOS (`effect-shape.js`): nome, desligado, transfer e
+ * as mudanças — o que o Companion lê. O efeito inteiro do Foundry carrega HTML
+ * e flags de dae/midi-qol/ddbimporter (KBs cada) e estourava o teto da edge.
+ *
+ * Três respostas, e a diferença importa (v1.7.1):
+ *  - array com efeitos → é o que o item tem;
+ *  - `[]`              → o item NÃO tem efeito nenhum (verdade do Foundry);
+ *  - `null`            → NÃO SEI: falhou ao ler, ou passou do teto da edge.
+ * Quem recebe `null` não manda nada — a edge grava `item.effects` por cima, e
+ * mandar `[]` num "não sei" apagava bônus reais no Companion.
  */
-const MAX_EFFECTS_JSON_LENGTH = 12_000;
+const MAX_EFFECTS = 50; // mesmos tetos da edge (foundry-inbound)
+const MAX_EFFECTS_JSON_LENGTH = 16_000;
 
 export function itemEffects(item) {
   try {
-    const arr = item?.toObject?.()?.effects;
-    if (!Array.isArray(arr)) return [];
-    if (JSON.stringify(arr).length > MAX_EFFECTS_JSON_LENGTH) {
-      console.warn(`${MODULE_ID} | effects de "${item?.name}" passam de ${MAX_EFFECTS_JSON_LENGTH} bytes — enviando item sem effects`);
-      return [];
+    const effects = Array.from(item?.effects ?? []).map(efeitoEnxuto);
+    if (effects.length > MAX_EFFECTS || JSON.stringify(effects).length > MAX_EFFECTS_JSON_LENGTH) {
+      console.warn(
+        `${MODULE_ID} | efeitos de "${item?.name}" passam do teto da edge (${effects.length} efeitos) — não enviados; o Companion mantém o que tinha`,
+      );
+      return null;
     }
-    return arr;
+    return effects;
   } catch (err) {
-    console.warn(`${MODULE_ID} | falha ao serializar effects de "${item?.name}":`, err);
-    return [];
+    console.warn(`${MODULE_ID} | falha ao ler efeitos de "${item?.name}" — não enviados:`, err);
+    return null;
   }
 }
 
@@ -255,12 +259,13 @@ async function upsertItem(item, actor) {
  *    Companion, resolvido pelo compêndio aqui);
  *  - quando um ActiveEffect de item muda (live-sync.js).
  *
- * Não reenvia o que não mudou: guarda, por item, o JSON do último envio aceito.
- * O push recria os itens synced a cada mudança de inventário; sem isto cada
- * equipar reenviaria os efeitos de tudo.
+ * Não reenvia o que não mudou: guarda, por item, a assinatura (conteúdo sem
+ * `_id`) do último envio aceito. O push recria os itens synced a cada mudança
+ * de inventário, com ids novos; sem isto cada equipar reenviaria tudo.
+ * Item cujos efeitos não deu para ler (`itemEffects` → null) fica de fora.
  */
-const efeitosEnviados = new Map(); // `${actorId}:${itemId}` -> JSON enviado
-const MAX_EFFECTS_BODY = 24_000; // a edge corta o body em 32 KiB
+const efeitosEnviados = new Map(); // `${actorId}:${itemId}` -> assinatura enviada (sem _id)
+const MAX_EFFECTS_BODY = 100_000; // a edge corta o body em 128 KiB
 
 export async function reportItemEffects(actor, items) {
   try {
@@ -273,7 +278,8 @@ export async function reportItemEffects(actor, items) {
       const itemId = getCompanionItemId(item);
       if (!itemId) continue;
       const effects = itemEffects(item);
-      const json = JSON.stringify(effects);
+      if (effects === null) continue; // não sei → não manda (não apaga)
+      const json = assinaturaDosEfeitos(effects);
       const chave = `${actor.id}:${itemId}`;
       if (efeitosEnviados.get(chave) === json) continue;
       pendentes.push({ chave, json, item_id: itemId, effects });
@@ -285,7 +291,7 @@ export async function reportItemEffects(actor, items) {
     let atual = [];
     let bytes = 0;
     for (const p of pendentes) {
-      const tam = p.json.length + 64;
+      const tam = JSON.stringify(p.effects).length + 64;
       if (atual.length && bytes + tam > MAX_EFFECTS_BODY) {
         lotes.push(atual);
         atual = [];
