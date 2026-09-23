@@ -57,7 +57,7 @@ lido só por acesso direto ao objeto, nunca `getFlag("companion", ...)`).
 - Travas (todas justificadas no cabeçalho do arquivo): segredo próprio no
   header (inalterado) · valida actor vinculado (inalterado) · whitelist
   estrita por operação (upsert lê SÓ foundry_item_id, name, type, stats,
-  description, img, qty, equipped) · body > 32 KiB → 413 · rate-limit do
+  description, img, qty, equipped) · body > 128 KiB → 413 · rate-limit do
   upsert 10/60s por actor (equipped continua 20/10s) · sanitização (strip
   TOTAL de HTML + entities + caps; img só URL http(s) — caminho local
   "icons/..." do Foundry é descartado) · dedupe por
