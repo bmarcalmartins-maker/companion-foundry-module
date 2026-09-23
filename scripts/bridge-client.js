@@ -1,5 +1,7 @@
 import { MODULE_ID } from "./settings.js";
 import { listItems, listPacks } from "./compendium.js";
+import { reportCreatedEffects } from "./equip-sync.js";
+import { readActor } from "./actor-read.js";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -227,6 +229,11 @@ export class BridgeClient {
         case "actor.delete":
           result = await this.#deleteActor(actor_id);
           break;
+        // IMPL-47: a ficha JÁ CALCULADA pelo dnd5e (efeitos aplicados). Só
+        // leitura. Volta sob `data`, como os comandos do compêndio.
+        case "actor.read":
+          result = { data: readActor(actor_id, MODULE_ID) };
+          break;
         // LEITURA (FASE 1). Devolvem sob `data` — é o campo que o Durable
         // Object repassa ao Companion; `actor_id` (usado pelos actor.*) não
         // existe aqui e some do JSON sozinho.
@@ -446,7 +453,10 @@ export class BridgeClient {
         await actor.updateEmbeddedDocuments("Item", paraAtualizar, { companionBridge: true });
       }
       if (paraCriar.length) {
-        await actor.createEmbeddedDocuments("Item", await this.#prepareItems(paraCriar), { companionBridge: true });
+        const criados = await actor.createEmbeddedDocuments("Item", await this.#prepareItems(paraCriar), { companionBridge: true });
+        // IMPL-47: os efeitos dos itens recém-criados voltam ao Companion. Sem
+        // await — a resposta do actor.update não espera pela volta.
+        void reportCreatedEffects(actor, criados);
       }
       this.log(
         `inventário: ${paraCriar.length} criado(s), ${paraAtualizar.length} nativo(s) atualizado(s) no lugar, ${syncedIds.length} substituído(s)`
