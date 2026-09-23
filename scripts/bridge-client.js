@@ -1,5 +1,6 @@
 import { MODULE_ID } from "./settings.js";
 import { listItems, listPacks } from "./compendium.js";
+import { reportCreatedEffects } from "./equip-sync.js";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -446,7 +447,10 @@ export class BridgeClient {
         await actor.updateEmbeddedDocuments("Item", paraAtualizar, { companionBridge: true });
       }
       if (paraCriar.length) {
-        await actor.createEmbeddedDocuments("Item", await this.#prepareItems(paraCriar), { companionBridge: true });
+        const criados = await actor.createEmbeddedDocuments("Item", await this.#prepareItems(paraCriar), { companionBridge: true });
+        // IMPL-47: os efeitos dos itens recém-criados voltam ao Companion. Sem
+        // await — a resposta do actor.update não espera pela volta.
+        void reportCreatedEffects(actor, criados);
       }
       this.log(
         `inventário: ${paraCriar.length} criado(s), ${paraAtualizar.length} nativo(s) atualizado(s) no lugar, ${syncedIds.length} substituído(s)`

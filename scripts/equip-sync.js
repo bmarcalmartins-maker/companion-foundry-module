@@ -236,6 +236,84 @@ async function upsertItem(item, actor) {
 }
 
 /* -------------------------------------------- */
+/*  Efeitos de item nascido no Companion        */
+/* -------------------------------------------- */
+
+/**
+ * IMPL-47 — devolve ao Companion os ActiveEffects dos itens que o bridge
+ * ACABOU de criar neste actor.
+ *
+ * O furo: item nascido no Companion chega aqui como casca + `compendium_hint`,
+ * o bridge-client o resolve pelo compêndio e ele ganha os efeitos do dnd5e —
+ * mas a volta só mandava `equipped`, e o Companion nunca soube do bônus. Agora,
+ * logo depois do createEmbeddedDocuments, os effects de cada item criado vão
+ * numa chamada só (`op: "item.effects"`). A edge grava SÓ onde o Companion
+ * ainda não tem nada (foundry_effects nulo).
+ *
+ * Três filtros para não reenviar a cada push (o push recria os itens synced
+ * toda vez que o inventário muda):
+ *  - item sem crachá do Companion → não há onde gravar;
+ *  - flag `has_effects` (o payload do Companion já diz que tem) → pula;
+ *  - memória da sessão: o que já foi aceito uma vez não viaja de novo.
+ * Item sem nenhum efeito não viaja: "sem bônus registrado" continua sendo a
+ * verdade do lado de lá.
+ */
+const efeitosEnviados = new Set();
+const MAX_EFFECTS_BODY = 24_000; // a edge corta o body em 32 KiB
+
+export async function reportCreatedEffects(actor, createdItems) {
+  try {
+    if (!(actor instanceof Actor) || actor.type !== "character") return;
+    if (!Array.isArray(createdItems) || !createdItems.length) return;
+    if (!isReportingGm()) return;
+
+    const pendentes = [];
+    for (const item of createdItems) {
+      const itemId = getCompanionItemId(item);
+      if (!itemId) continue;
+      if (item?.getFlag?.(MODULE_ID, "has_effects") === true) continue;
+      const chave = `${actor.id}:${itemId}`;
+      if (efeitosEnviados.has(chave)) continue;
+      const effects = itemEffects(item);
+      if (!effects.length) continue;
+      pendentes.push({ chave, item_id: itemId, effects });
+    }
+    if (!pendentes.length) return;
+
+    // Lotes que cabem no teto da edge.
+    const lotes = [];
+    let atual = [];
+    let bytes = 0;
+    for (const p of pendentes) {
+      const tam = JSON.stringify(p.effects).length + 64;
+      if (atual.length && bytes + tam > MAX_EFFECTS_BODY) {
+        lotes.push(atual);
+        atual = [];
+        bytes = 0;
+      }
+      atual.push(p);
+      bytes += tam;
+    }
+    if (atual.length) lotes.push(atual);
+
+    for (const lote of lotes) {
+      const res = await postInbound({
+        op: "item.effects",
+        actor_id: actor.id,
+        items: lote.map(({ item_id, effects }) => ({ item_id, effects })),
+      });
+      if (res?.ok) {
+        lote.forEach((p) => efeitosEnviados.add(p.chave));
+        console.log(`${MODULE_ID} | efeitos → Companion: ${lote.length} item(ns), ${res.gravados ?? 0} gravado(s)`);
+      }
+    }
+  } catch (err) {
+    // Nunca derruba o sync de inventário: o item já está no actor.
+    console.warn(`${MODULE_ID} | falha ao devolver efeitos ao Companion:`, err);
+  }
+}
+
+/* -------------------------------------------- */
 /*  Hooks                                       */
 /* -------------------------------------------- */
 
