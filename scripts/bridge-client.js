@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./settings.js";
 import { listItems, listPacks } from "./compendium.js";
 import { reportCreatedEffects } from "./equip-sync.js";
+import { readActor } from "./actor-read.js";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -227,6 +228,11 @@ export class BridgeClient {
           break;
         case "actor.delete":
           result = await this.#deleteActor(actor_id);
+          break;
+        // IMPL-47: a ficha JÁ CALCULADA pelo dnd5e (efeitos aplicados). Só
+        // leitura. Volta sob `data`, como os comandos do compêndio.
+        case "actor.read":
+          result = { data: readActor(actor_id, MODULE_ID) };
           break;
         // LEITURA (FASE 1). Devolvem sob `data` — é o campo que o Durable
         // Object repassa ao Companion; `actor_id` (usado pelos actor.*) não
