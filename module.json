@@ -1,8 +1,8 @@
 {
   "id": "companion-foundry-bridge",
   "title": "Companion Foundry Bridge",
-  "description": "Bridges Companion app to Foundry VTT for live NPC sync.",
-  "version": "1.7.1",
+  "description": "Bridges the Companion app and Foundry VTT: actors, inventory, equipment and the computed sheet, both ways, in real time.",
+  "version": "1.7.2",
   "compatibility": {
     "minimum": "13",
     "verified": "14",
