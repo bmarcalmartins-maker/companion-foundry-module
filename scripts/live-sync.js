@@ -41,24 +41,40 @@ const NAO_VINCULADO_MS = 10 * 60 * 1000;
  */
 const MAX_SNAPSHOT_JSON = 120_000;
 
+/**
+ * Intervalo mínimo entre duas fichas do MESMO actor. A edge aceita 30 por
+ * minuto por actor; com o debounce de 800 ms sozinho, mudanças espaçadas de
+ * pouco mais de 800 ms (PV clicado em combate) passavam disso e o 429 perdia a
+ * ficha final. 2,5 s dá no máximo 24 por minuto.
+ */
+const INTERVALO_MIN_MS = 2_500;
+const ESPERA_429_MS = 5_000;
+
 const timers = new Map(); // actorId -> timeout
 const naoVinculado = new Map(); // actorId -> até quando ignorar
+const ultimoEnvio = new Map(); // actorId -> Date.now() do último POST
+const emVoo = new Set(); // actorIds com POST em andamento
+const deNovo = new Set(); // mudou enquanto o POST estava em voo
+const segurados = new Map(); // actorId -> quantas operações do bridge em curso
 
 function personagem(doc) {
   const actor = doc instanceof Actor ? doc : doc?.parent instanceof Actor ? doc.parent : doc?.parent?.parent;
   return actor instanceof Actor && actor.type === "character" ? actor : null;
 }
 
-async function enviarFicha(actor) {
+/** Devolve o status HTTP do envio (ou null se não enviou). */
+async function enviarFicha(actorId) {
+  const actor = game.actors.get(actorId);
+  if (!actor) return null;
   const ate = naoVinculado.get(actor.id) ?? 0;
-  if (Date.now() < ate) return;
+  if (Date.now() < ate) return null;
 
   let snapshot;
   try {
     snapshot = readActor(actor.id, MODULE_ID);
   } catch (err) {
     console.warn(`${MODULE_ID} | não consegui ler a ficha de "${actor.name}":`, err);
-    return;
+    return null;
   }
   // Rede de segurança: grande demais, vai sem os efeitos dos equipados (os
   // números calculados, que são o que o painel mostra, continuam inteiros).
@@ -72,29 +88,92 @@ async function enviarFicha(actor) {
     tamanho = JSON.stringify(snapshot).length;
     if (tamanho > MAX_SNAPSHOT_JSON) {
       console.warn(`${MODULE_ID} | ficha de "${actor.name}" ainda com ${tamanho} caracteres — não enviada`);
-      return;
+      return null;
     }
   }
 
+  ultimoEnvio.set(actor.id, Date.now());
   const res = await postInbound({ op: "actor.snapshot", actor_id: actor.id, snapshot }, { silencioso404: true });
-  if (res?.status === 404) {
+  // Só o 404 "actor não vinculado" pausa. Outro erro (banco fora, dois PCs no
+  // mesmo actor) aparece no console e NÃO silencia o personagem por 10 min.
+  if (res?.code === "actor_nao_vinculado") {
     naoVinculado.set(actor.id, Date.now() + NAO_VINCULADO_MS);
-    return;
+    return 404;
   }
   if (res?.ok) naoVinculado.delete(actor.id);
+  return res?.ok ? 200 : (res?.status ?? null);
+}
+
+/*
+ * Um POST por actor por vez. Sem isto, um POST lento e uma mudança nova
+ * mandavam dois ao mesmo tempo, e o mais velho podia chegar por último e
+ * deixar gravada a ficha antiga. Mudança durante o voo vira um envio a mais,
+ * DEPOIS — com a ficha lida na hora, logo a final.
+ */
+async function disparar(actorId) {
+  if (emVoo.has(actorId)) {
+    deNovo.add(actorId);
+    return;
+  }
+  const espera = (ultimoEnvio.get(actorId) ?? 0) + INTERVALO_MIN_MS - Date.now();
+  if (espera > 0) {
+    armar(actorId, espera);
+    return;
+  }
+  emVoo.add(actorId);
+  let status = null;
+  try {
+    status = await enviarFicha(actorId);
+  } finally {
+    emVoo.delete(actorId);
+  }
+  if (status === 429) {
+    armar(actorId, ESPERA_429_MS);
+  } else if (deNovo.delete(actorId)) {
+    armar(actorId, DEBOUNCE_MS);
+  }
+}
+
+function armar(actorId, ms) {
+  clearTimeout(timers.get(actorId));
+  timers.set(
+    actorId,
+    setTimeout(() => {
+      timers.delete(actorId);
+      void disparar(actorId);
+    }, ms),
+  );
 }
 
 /** Agenda o envio da ficha deste actor (debounce). */
 export function agendarFicha(actor) {
   if (!actor || !isReportingGm()) return;
-  clearTimeout(timers.get(actor.id));
-  timers.set(
-    actor.id,
-    setTimeout(() => {
-      timers.delete(actor.id);
-      void enviarFicha(actor);
-    }, DEBOUNCE_MS),
-  );
+  // Bridge no meio de uma troca de inventário: a ficha de agora está pela
+  // metade (itens velhos já apagados, novos ainda não criados). Vai quando ele
+  // soltar.
+  if (segurados.get(actor.id)) return;
+  armar(actor.id, DEBOUNCE_MS);
+}
+
+/**
+ * O bridge avisa que vai mexer no actor (actor.update) e depois que terminou.
+ * Enquanto segurado, nenhuma ficha sai; ao soltar, sai UMA, com o estado final.
+ */
+export function segurarFicha(actorId) {
+  segurados.set(actorId, (segurados.get(actorId) ?? 0) + 1);
+  clearTimeout(timers.get(actorId));
+  timers.delete(actorId);
+}
+
+export function soltarFicha(actorId) {
+  const n = (segurados.get(actorId) ?? 1) - 1;
+  if (n > 0) {
+    segurados.set(actorId, n);
+    return;
+  }
+  segurados.delete(actorId);
+  const actor = game.actors.get(actorId);
+  if (actor?.type === "character") agendarFicha(actor);
 }
 
 /*

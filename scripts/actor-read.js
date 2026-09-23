@@ -78,15 +78,21 @@ export function readActor(actorId, moduleId) {
     read_at: new Date().toISOString(),
     level: num(sys.details?.level),
     abilities,
-    ac: {
-      value: num(ac.value),
-      base: num(ac.base),
-      armor: num(ac.armor),
-      shield: num(ac.shield),
-      bonus: num(ac.bonus),
-      cover: num(ac.cover),
-      calc: typeof ac.calc === "string" ? ac.calc : undefined,
-    },
+    // CA "flat": o dnd5e usa o número digitado e sai do cálculo antes das
+    // partes (attributes.mjs:178-180) — armor/shield/cover ficam nos valores
+    // padrão e contariam uma decomposição que não existe. Só o total vai.
+    ac:
+      ac.calc === "flat"
+        ? { value: num(ac.value), calc: "flat" }
+        : {
+            value: num(ac.value),
+            base: num(ac.base),
+            armor: num(ac.armor),
+            shield: num(ac.shield),
+            bonus: num(ac.bonus),
+            cover: num(ac.cover),
+            calc: typeof ac.calc === "string" ? ac.calc : undefined,
+          },
     hp: {
       value: num(hp.value),
       max: num(hp.max),

@@ -2,11 +2,11 @@
   "CFB.Settings.BridgeUrl.Name": "URL do Bridge",
   "CFB.Settings.BridgeUrl.Hint": "Endpoint WebSocket do Worker bridge do Companion. Padrão: wss://bridge.companion-products.org/ws",
   "CFB.Settings.ApiKey.Name": "Chave de API",
-  "CFB.Settings.ApiKey.Hint": "Segredo compartilhado. Tem que ser igual à BRIDGE_API_KEY do Worker e ao secret do Companion (Supabase).",
+  "CFB.Settings.ApiKey.Hint": "Segredo compartilhado. Tem que ser igual à BRIDGE_API_KEY do Worker e ao secret do Companion (Supabase). Fica SÓ neste navegador (só o GM precisa).",
   "CFB.Settings.InboundUrl.Name": "URL de Entrada do Companion",
   "CFB.Settings.InboundUrl.Hint": "Endpoint da edge function foundry-inbound do Companion (mão Foundry→Companion).",
   "CFB.Settings.InboundKey.Name": "Chave de Entrada do Companion",
-  "CFB.Settings.InboundKey.Hint": "Segredo enviado como x-foundry-inbound-key. Tem que ser igual ao secret FOUNDRY_INBOUND_KEY do Supabase. Vazia = mão Foundry→Companion desligada.",
+  "CFB.Settings.InboundKey.Hint": "Segredo enviado como x-foundry-inbound-key. Tem que ser igual ao secret FOUNDRY_INBOUND_KEY do Supabase. Vazia = mão Foundry→Companion desligada. Fica SÓ neste navegador (só o GM precisa).",
   "CFB.Settings.AutoConnect.Name": "Conectar automaticamente",
   "CFB.Settings.AutoConnect.Hint": "Conecta no bridge automaticamente quando o mundo carrega (só GM).",
   "CFB.Settings.StatusMenu.Name": "Status da Conexão",
@@ -22,5 +22,7 @@
   "CFB.Notify.Connected": "Bridge do Companion conectado.",
   "CFB.Notify.Disconnected": "Bridge do Companion desconectado.",
   "CFB.Notify.Reconnecting": "Bridge do Companion reconectando em {seconds}s…",
-  "CFB.Notify.NoApiKey": "Bridge do Companion: chave de API não configurada. Configure nas opções do módulo."
+  "CFB.Notify.NoApiKey": "Bridge do Companion: chave de API não configurada. Configure nas opções do módulo.",
+  "CFB.Notify.ChavesMovidas": "Bridge do Companion: as chaves saíram da configuração do mundo (todo jogador as recebia) e agora ficam só NESTE navegador. Outro navegador de GM precisa digitá-las de novo nas opções do módulo.",
+  "CFB.Notify.Substituido": "Bridge do Companion: esta conexão foi substituída por outra janela de GM. Use \"Reconectar\" no status do módulo para retomar."
 }

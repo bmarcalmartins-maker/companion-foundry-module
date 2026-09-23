@@ -82,7 +82,7 @@ export async function listPacks() {
 
 /*
  * NOTA DE DUPLICAÇÃO (deliberada, não descuido): a leitura de
- * dano/CA/alcance abaixo repete a de `combatStats` em equip-sync.js:141-160.
+ * dano/CA/alcance abaixo repete a de `combatStats` em equip-sync.js (`combatStats`).
  * Não unifiquei porque isso seria refatorar um caminho que já está em produção
  * no meio de uma implementação nova. Aqui o extrator precisa de MAIS campos
  * (raridade, peso, preço, propriedades), então nem seria a mesma função.

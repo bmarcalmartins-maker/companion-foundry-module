@@ -1,4 +1,4 @@
-import { MODULE_ID } from "./settings.js";
+import { MODULE_ID, chaveDeEntrada } from "./settings.js";
 import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
 
 /**
@@ -26,10 +26,9 @@ import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
  *     com crachá — só item genuinamente novo do Foundry viaja.
  *  3. ESTRUTURAL: o sync Companion→Foundry é DELETE+CREATE de itens synced
  *     (bridge-client.js #updateActor) — nunca dispara updateItem; e o único
- *     write que o Companion faz na volta é equipped no banco, que NÃO gera
- *     push automático pro Foundry (push-to-foundry é botão manual).
- * Mesmo num cenário futuro de push automático, o ciclo converge em 1 volta:
- * as camadas 1 e 2 barram o reenvio.
+ *     write que o Companion faz na volta é equipped no banco. Esse write DISPARA
+ *     push automático pro Foundry (gatilho em character_items, IMPL-40), e o
+ *     ciclo converge em 1 volta: as camadas 1 e 2 barram o reenvio.
  */
 
 /** Tipos dnd5e físicos que fazem sentido no inventário do Companion. */
@@ -91,11 +90,24 @@ export function isReportingGm() {
  *  401 chave errada · 404 actor/item não vinculado · 413 payload grande ·
  *  429 rate limit · 503 porta trancada (secret não criado no Supabase).
  */
+let avisouSemConfig = false;
+
+/**
+ * `{ ok:false, status, code }` em erro HTTP. `code: "actor_nao_vinculado"` é o
+ * único 404 que quer dizer "este actor não é PC do Companion" — a edge manda o
+ * código desde a v11. A mensagem antiga também vale (edge anterior). Qualquer
+ * outro 404 (item fora do inventário, rota errada) NÃO é "não vinculado".
+ */
 export async function postInbound(payload, { silencioso404 = false } = {}) {
   const url = game.settings.get(MODULE_ID, "inboundUrl");
-  const key = game.settings.get(MODULE_ID, "inboundKey");
+  const key = chaveDeEntrada();
   if (!url || !key) {
-    console.warn(`${MODULE_ID} | inbound não configurado (URL/key nas settings) — evento descartado`);
+    // Uma vez por sessão: com o tempo real, cada mudança de ficha passaria por
+    // aqui e o console viraria spam.
+    if (!avisouSemConfig) {
+      avisouSemConfig = true;
+      console.warn(`${MODULE_ID} | inbound não configurado (URL/chave nas opções do módulo, neste navegador) — eventos descartados`);
+    }
     return null;
   }
 
@@ -120,12 +132,15 @@ export async function postInbound(payload, { silencioso404 = false } = {}) {
       429: "rate limit da edge — reduza o ritmo",
       503: "porta trancada — secret FOUNDRY_INBOUND_KEY não criado no Supabase",
     }[res.status] ?? (body?.error ?? "erro desconhecido");
-    // 404 de actor NÃO vinculado é o estado normal de todo personagem que não
-    // é PC do Companion; quem pede silêncio trata sozinho.
-    if (!(silencioso404 && res.status === 404)) {
+    const naoVinculado =
+      res.status === 404 &&
+      (body?.code === "actor_nao_vinculado" || body?.error === "actor não vinculado a nenhum PC");
+    // Actor NÃO vinculado é o estado normal de todo personagem que não é PC do
+    // Companion; quem pede silêncio trata sozinho. Outro 404 sempre aparece.
+    if (!(silencioso404 && naoVinculado)) {
       console.error(`${MODULE_ID} | inbound ${res.status}: ${why}`, payload?.op ?? "equip");
     }
-    return { ok: false, status: res.status };
+    return { ok: false, status: res.status, code: naoVinculado ? "actor_nao_vinculado" : (body?.code ?? null) };
   }
   return body;
 }
@@ -240,7 +255,47 @@ async function upsertItem(item, actor) {
     console.log(`${MODULE_ID} | item enviado pro Companion: "${item.name}" → ${res.item_id} (${res.created ? "criado" : "atualizado"})`);
     return true;
   }
-  return false;
+  // 429 volta como número para a fila saber que vale tentar de novo.
+  return res?.status === 429 ? 429 : false;
+}
+
+/*
+ * FILA DE UPSERT por actor (v1.7.2). Arrastar 15 itens de uma vez disparava 15
+ * upserts juntos; a edge aceita 10 por minuto por actor e os 5 excedentes
+ * tomavam 429 e ficavam sem crachá. Agora vão um de cada vez, respeitando a
+ * mesma janela da edge aqui do lado, e um 429 ainda assim tenta de novo.
+ */
+const JANELA_UPSERT_MS = 60_000;
+const MAX_UPSERT_NA_JANELA = 10;
+const filasUpsert = new Map(); // actorId -> Promise da fila
+const upsertsRecentes = new Map(); // actorId -> timestamps
+
+async function esperarVagaDeUpsert(actorId) {
+  for (;;) {
+    const agora = Date.now();
+    const recentes = (upsertsRecentes.get(actorId) ?? []).filter((t) => agora - t < JANELA_UPSERT_MS);
+    upsertsRecentes.set(actorId, recentes);
+    if (recentes.length < MAX_UPSERT_NA_JANELA) {
+      recentes.push(agora);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, recentes[0] + JANELA_UPSERT_MS - agora + 250));
+  }
+}
+
+function enfileirarUpsert(item, actor) {
+  const anterior = filasUpsert.get(actor.id) ?? Promise.resolve();
+  const proxima = anterior.then(async () => {
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      // Item apagado ou já com crachá enquanto esperava na fila: nada a fazer.
+      if (!actor.items.get(item.id) || getCompanionItemId(item)) return;
+      await esperarVagaDeUpsert(actor.id);
+      const status = await upsertItem(item, actor);
+      if (status !== 429) return;
+    }
+  });
+  filasUpsert.set(actor.id, proxima.catch(() => {}));
+  return proxima;
 }
 
 /* -------------------------------------------- */
@@ -267,7 +322,10 @@ async function upsertItem(item, actor) {
 const efeitosEnviados = new Map(); // `${actorId}:${itemId}` -> assinatura enviada (sem _id)
 const MAX_EFFECTS_BODY = 100_000; // a edge corta o body em 128 KiB
 
-export async function reportItemEffects(actor, items) {
+const RETENTATIVAS_EFEITOS = 3;
+const ESPERA_EFEITOS_MS = 20_000; // a janela da edge é de 60 s, 10 envios
+
+export async function reportItemEffects(actor, items, tentativa = 0) {
   try {
     if (!(actor instanceof Actor) || actor.type !== "character") return;
     if (!Array.isArray(items) || !items.length) return;
@@ -282,7 +340,7 @@ export async function reportItemEffects(actor, items) {
       const json = assinaturaDosEfeitos(effects);
       const chave = `${actor.id}:${itemId}`;
       if (efeitosEnviados.get(chave) === json) continue;
-      pendentes.push({ chave, json, item_id: itemId, effects });
+      pendentes.push({ chave, json, item_id: itemId, effects, item });
     }
     if (!pendentes.length) return;
 
@@ -310,6 +368,16 @@ export async function reportItemEffects(actor, items) {
       if (res?.ok) {
         lote.forEach((p) => efeitosEnviados.set(p.chave, p.json));
         console.log(`${MODULE_ID} | efeitos → Companion: ${lote.length} item(ns), ${res.gravados ?? 0} gravado(s)`);
+      } else if ((res === null || res?.status === 429 || res?.status >= 500) && tentativa < RETENTATIVAS_EFEITOS) {
+        // Limite da edge, rede ou erro do servidor: sem retentativa, o efeito só
+        // voltaria na próxima mudança daquele item — que pode nunca vir.
+        // (`null` também cobre "não configurado"; aí as retentativas só gastam
+        // três timers e param.)
+        const itensDoLote = lote.map((p) => p.item);
+        setTimeout(() => {
+          const vivos = itensDoLote.filter((i) => !actor.items?.get || actor.items.get(i.id));
+          void reportItemEffects(actor, vivos, tentativa + 1);
+        }, ESPERA_EFEITOS_MS * (tentativa + 1));
       }
     }
   } catch (err) {
@@ -352,7 +420,7 @@ export function registerEquipWatcher() {
     }
     // Sem crachá = item nativo que ainda não viajou — o upsert leva o estado
     // de equipped junto e devolve o crachá (equips futuros vão pela rota leve).
-    if (!isBridgeManaged(item)) await upsertItem(item, actor);
+    if (!isBridgeManaged(item)) await enfileirarUpsert(item, actor);
   });
 
   // ITEM NOVO no actor — manda completo pro Companion.
@@ -364,7 +432,7 @@ export function registerEquipWatcher() {
     const actor = eligibleActor(item);
     if (!actor) return;
 
-    await upsertItem(item, actor);
+    await enfileirarUpsert(item, actor);
   });
 
   console.log(`${MODULE_ID} | equip watcher registrado (updateItem + createItem)`);
@@ -395,7 +463,7 @@ export async function syncActorInventory(actor) {
   let sent = 0;
   let failed = 0;
   for (const item of pending) {
-    const ok = await upsertItem(item, actor);
+    const ok = (await upsertItem(item, actor)) === true;
     ok ? sent++ : failed++;
     if (item !== pending[pending.length - 1]) {
       await new Promise((r) => setTimeout(r, INITIAL_SYNC_DELAY_MS));

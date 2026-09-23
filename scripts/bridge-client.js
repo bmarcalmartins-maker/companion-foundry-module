@@ -1,7 +1,8 @@
-import { MODULE_ID } from "./settings.js";
+import { MODULE_ID, chaveDaPonte } from "./settings.js";
 import { listItems, listPacks } from "./compendium.js";
 import { reportCreatedEffects } from "./equip-sync.js";
 import { readActor } from "./actor-read.js";
+import { segurarFicha, soltarFicha } from "./live-sync.js";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -52,7 +53,7 @@ export class BridgeClient {
   }
 
   get apiKey() {
-    return game.settings.get(MODULE_ID, "apiKey");
+    return chaveDaPonte();
   }
 
   log(message) {
@@ -147,6 +148,14 @@ export class BridgeClient {
     this.status = "disconnected";
     this.ws = null;
     if (this.intentionalClose) return;
+    // 4000 = a ponte trocou esta conexão por uma mais nova (outra janela de
+    // GM). Reconectar derrubaria a outra, que derrubaria esta, a cada ~1 s.
+    // Fica desligado; "Reconectar" no status do módulo retoma se for preciso.
+    if (event?.code === 4000) {
+      this.log("conexão substituída por outra janela de GM — sem reconectar");
+      ui.notifications.info(game.i18n.localize("CFB.Notify.Substituido"));
+      return;
+    }
     this.log(`connection closed (code ${event?.code ?? "?"})`);
     ui.notifications.warn(game.i18n.localize("CFB.Notify.Disconnected"));
     this.scheduleReconnect();
@@ -327,6 +336,9 @@ export class BridgeClient {
     if (item.img && !item.img.startsWith("icons/svg/")) data.img = item.img;
     // Payload flags merge on top — item_id/synced markers drive idempotent re-sync.
     data.flags = foundry.utils.mergeObject(data.flags ?? {}, item.flags ?? {}, { inplace: false });
+    // Marca de "veio do compêndio": só item resolvido de verdade conta os
+    // efeitos ao Companion na criação (ver #updateActor).
+    data.flags[MODULE_ID] = { ...(data.flags[MODULE_ID] ?? {}), compendio: true };
 
     return data;
   }
@@ -386,6 +398,19 @@ export class BridgeClient {
   // DO Companion nunca é reenviada PRO Companion.
   async #createActor(payload) {
     if (!payload || typeof payload !== "object") throw new Error("missing actor payload");
+    // IDEMPOTENTE: se já existe um actor com a mesma identidade do Companion,
+    // é o MESMO — um create anterior que o Foundry concluiu mas cuja resposta
+    // estourou o tempo da ponte (o Companion não gravou o id e mandou criar de
+    // novo). Atualiza esse em vez de criar um segundo.
+    const marca = payload.flags?.[MODULE_ID]?.companion_actor_id;
+    if (marca) {
+      const existente = game.actors.find((a) => a.getFlag(MODULE_ID, "companion_actor_id") === marca);
+      if (existente) {
+        this.log(`actor.create: "${existente.name}" já existe (${existente.id}) — atualizando em vez de duplicar`);
+        const { type, ...semTipo } = payload;
+        return this.#updateActor(existente.id, semTipo);
+      }
+    }
     const data = foundry.utils.deepClone(payload);
     if (Array.isArray(data.items)) data.items = await this.#prepareItems(data.items);
     const actor = await Actor.implementation.create(data, { keepId: false, companionBridge: true });
@@ -397,6 +422,18 @@ export class BridgeClient {
     if (!actorId) throw new Error("missing actor_id");
     const actor = game.actors.get(actorId);
     if (!actor) throw new Error(`actor not found: ${actorId}`);
+    // Nenhuma ficha sai para o Companion enquanto os itens são trocados: sairia
+    // a do meio da troca (itens velhos já apagados, novos ainda não criados).
+    // Ao soltar, sai uma, com o estado final.
+    segurarFicha(actor.id);
+    try {
+      return await this.#updateActorSegurado(actor, payload);
+    } finally {
+      soltarFicha(actor.id);
+    }
+  }
+
+  async #updateActorSegurado(actor, payload) {
 
     const { items, ...actorData } = payload ?? {};
     if (Object.keys(actorData).length) await actor.update(actorData, { companionBridge: true });
@@ -446,17 +483,31 @@ export class BridgeClient {
         if (Object.keys(mudanca).length > 1) paraAtualizar.push(mudanca);
       }
 
+      // Prepara ANTES de apagar: a resolução pelo compêndio (índice de todos os
+      // packs na primeira vez, um getDocument por item) é a parte lenta, e
+      // feita depois do delete deixava o actor sem os itens nesse intervalo.
+      const preparados = paraCriar.length ? await this.#prepareItems(paraCriar) : [];
+
       // Troca só o que ESTE módulo criou; o que o GM pôs à mão fica de pé.
       const syncedIds = actor.items.filter((i) => i.getFlag(MODULE_ID, "synced")).map((i) => i.id);
       if (syncedIds.length) await actor.deleteEmbeddedDocuments("Item", syncedIds, { companionBridge: true });
       if (paraAtualizar.length) {
         await actor.updateEmbeddedDocuments("Item", paraAtualizar, { companionBridge: true });
       }
-      if (paraCriar.length) {
-        const criados = await actor.createEmbeddedDocuments("Item", await this.#prepareItems(paraCriar), { companionBridge: true });
+      if (preparados.length) {
+        const criados = await actor.createEmbeddedDocuments("Item", preparados, { companionBridge: true });
         // IMPL-47: os efeitos dos itens recém-criados voltam ao Companion. Sem
         // await — a resposta do actor.update não espera pela volta.
-        void reportCreatedEffects(actor, criados);
+        //
+        // Só de item resolvido pelo compêndio (ou que tenha efeito): a CASCA
+        // (sem match) nasce sem efeito porque o módulo não achou o item, não
+        // porque o item não tenha bônus — mandar o `[]` dela apagava no
+        // Companion o bônus que veio do espelho do compêndio. Efeito mexido
+        // depois, no Foundry, volta pelo live-sync normalmente.
+        const comEfeitoConhecido = criados.filter(
+          (i) => i.getFlag(MODULE_ID, "compendio") || (i.effects?.size ?? 0) > 0,
+        );
+        void reportCreatedEffects(actor, comEfeitoConhecido);
       }
       this.log(
         `inventário: ${paraCriar.length} criado(s), ${paraAtualizar.length} nativo(s) atualizado(s) no lugar, ${syncedIds.length} substituído(s)`

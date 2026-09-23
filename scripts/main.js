@@ -1,4 +1,4 @@
-import { MODULE_ID, registerSettings } from "./settings.js";
+import { MODULE_ID, migrarChavesParaONavegador, registerSettings } from "./settings.js";
 import { BridgeClient } from "./bridge-client.js";
 import { registerEquipWatcher, syncActorInventory, resetActorLink } from "./equip-sync.js";
 import { listItems, listPacks } from "./compendium.js";
@@ -9,10 +9,23 @@ Hooks.once("init", () => {
   console.log(`${MODULE_ID} | initialized`);
 });
 
-Hooks.once("ready", () => {
+/** Este navegador é o do GM ATIVO (o único que conecta e reporta)? */
+function souOGmAtivo() {
+  return !!game.user?.isGM && game.users.activeGM?.id === game.user.id;
+}
+
+Hooks.once("ready", async () => {
   // Only the GM holds the bridge connection — it's the only client allowed to
   // create world actors, and a single connection avoids duplicate writes.
   if (!game.user.isGM) return;
+
+  // v1.7.2: as chaves saem do mundo (todo jogador as recebia) ANTES de
+  // qualquer conexão usar a deste navegador.
+  try {
+    await migrarChavesParaONavegador();
+  } catch (err) {
+    console.error(`${MODULE_ID} | falha ao migrar as chaves para este navegador`, err);
+  }
 
   const client = new BridgeClient();
   const module = game.modules.get(MODULE_ID);
@@ -39,7 +52,19 @@ Hooks.once("ready", () => {
     compendiumItems: (query) => listItems(query ?? {}),
   };
 
-  if (game.settings.get(MODULE_ID, "autoConnect")) client.connect();
+  // Só o GM ATIVO conecta. Com dois GMs (ou duas janelas), cada um abria o
+  // seu socket; a ponte agora fica só com o mais novo e fecha o outro.
+  if (game.settings.get(MODULE_ID, "autoConnect") && souOGmAtivo()) client.connect();
+  // O GM ativo muda quando um GM entra ou sai: quem virou ativo conecta, quem
+  // deixou de ser desconecta.
+  Hooks.on("userConnected", () => {
+    if (!game.settings.get(MODULE_ID, "autoConnect")) return;
+    if (souOGmAtivo()) {
+      if (client.status === "disconnected") client.connect();
+    } else if (client.status !== "disconnected") {
+      client.disconnect();
+    }
+  });
 
   // Foundry→Companion (bidirecional): observa equip/desequip de itens synced.
   // GM-only por estar dentro deste bloco — clientes de jogador nunca registram.
