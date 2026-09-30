@@ -262,8 +262,8 @@ O passo 2 é do lado do Companion e é destrutivo — não sai daqui.
 
 Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**
 (só com crachá). O repositório principal tem a outra metade (banco e edges) e o
-roteiro de teste com o Foundry aberto (`docs/CONTEXTO-RAIO-X-PLANO-2026-09-28.md`,
-LOTE 08).
+roteiro de teste com o Foundry aberto (`docs/raio-x/lotes/RAIO-X-LOTE-08.md`;
+até 30/09 era a seção 3r do `docs/CONTEXTO-RAIO-X-PLANO-2026-09-28.md`).
 
 **O envio (`bridge-client.js` + `plano-inventario.js`)**
 - Um comando por actor de cada vez (`fila-por-ator.js`): `actor.update`,
@@ -311,5 +311,5 @@ LOTE 08).
 ## 8. Pendência de faxina (depois de validado em prod)
 
 - Comentário antigo em `mapping.ts` (pré-B1) sobre "módulo não preserva
-  flags" já foi corrigido; conferir se `docs/IMPL-35.md` precisa registrar
+  flags" já foi corrigido; conferir se `docs/itens/IMPL-35.md` precisa registrar
   as decisões B1–B3 (não mexi no IMPL-35 — fora do escopo desta sessão).
