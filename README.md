@@ -38,9 +38,42 @@ Function — see the mapping in `baldur-s-gate-companion/docs/FOUNDRY-DND5E-V5-S
 Items created by the bridge are tagged with a `companion-foundry-bridge.synced` flag so
 that re-sending an NPC replaces only those items and leaves GM-added items intact.
 
+### Inventário de PC — desde a 1.8.0 (LOTE 08 do Raio-X, 30/09)
+
+Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
+
+- **Um comando por ator de cada vez** (`scripts/fila-por-ator.js`). O Companion
+  também manda um envio por PC de cada vez; aqui é a mesma regra para o que
+  chegar junto.
+- **Atualiza no lugar, não recria** (`scripts/plano-inventario.js`). Até a 1.7
+  as cópias do módulo eram apagadas e recriadas a cada envio: a sintonia feita
+  no Foundry, as cargas e os usos sumiam. Agora só muda o que o Companion manda:
+  equipado; na cópia, nome e imagem.
+- **Quantidade é do Foundry depois de criado o item.** O Companion manda o que
+  ELE mudou (consumir, trocar, o Mestre editar) como diferença acumulada
+  (`ajuste_total`); o item guarda o que já aplicou (`ajuste_aplicado`).
+- **Nativo com crachá só sai do ator quando o Companion diz que ele SAIU do
+  personagem** (descartado, trocado — `flags.companion-foundry-bridge.saidas`
+  no envio). Crachá velho fora do envio não apaga nada; arma natural, magia e
+  talento nunca saem.
+- **A volta ganha estado e exclusão.** Equipar, quantidade e sintonia mudados
+  aqui vão num `item.estado` agrupado; item apagado aqui vai num `item.delete`
+  (e não é recriado por um envio que ainda o trazia). Item novo com crachá de
+  outro personagem (arrastado, duplicado) perde o crachá e entra como novo.
+- **O item exato do compêndio**: a pista traz o `uuid` do item escolhido no
+  espelho; o módulo resolve por ele antes do nome (`scripts/casar-compendio.js`).
+
+## Testes
+
+`npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
+para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — isso
+é o roteiro de teste com o Foundry aberto.
+
 ## Files
 
 - `scripts/main.js` — hooks: register settings, connect on ready (GM).
 - `scripts/bridge-client.js` — WebSocket client (reconnect, heartbeat, actor handlers).
 - `scripts/status-app.js` — connection-status panel (ApplicationV2).
 - `scripts/settings.js` — settings + status menu registration.
+- `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
+- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js` — pure rules, tested in `test/`.
