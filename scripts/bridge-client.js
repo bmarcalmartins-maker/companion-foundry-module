@@ -1,8 +1,17 @@
 import { MODULE_ID, chaveDaPonte } from "./settings.js";
 import { listItems, listPacks } from "./compendium.js";
-import { reportCreatedEffects } from "./equip-sync.js";
+import {
+  agendarEstado,
+  crachasApagadosHaPouco,
+  getCompanionItemId,
+  isSyncableItem,
+  reportCreatedEffects,
+} from "./equip-sync.js";
 import { readActor } from "./actor-read.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
+import { criarFila } from "./fila-por-ator.js";
+import { planejarInventario } from "./plano-inventario.js";
+import { chavesDoHint, slugify, uuidDoHint } from "./casar-compendio.js";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -12,16 +21,6 @@ const MAX_LOGS = 50;
 const NOTIFY_EVERY_ATTEMPTS = 5;
 /** System SRD pack — wins name collisions when resolving `compendium_hint`. */
 const SYSTEM_PACK = "dnd5e.items";
-
-/** Normalize a name for exact compendium matching: lowercase, strip accents, spaces→hyphens. */
-function slugify(value) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 /**
  * WebSocket client that connects the Foundry GM session to the bridge Worker.
@@ -46,6 +45,8 @@ export class BridgeClient {
     this.logs = [];
     /** @type {Promise<Map<string, {pack: object, id: string}>>|null} lazy slug→entry index */
     this.compendiumIndex = null;
+    // FVT-07 (LOTE 08): um comando por actor de cada vez (fila-por-ator.js).
+    this.fila = criarFila();
   }
 
   get bridgeUrl() {
@@ -232,16 +233,20 @@ export class BridgeClient {
         case "actor.create":
           result = await this.#createActor(payload);
           break;
+        // FVT-07 (LOTE 08): os comandos de um mesmo actor em FILA. As
+        // mensagens chegam sem esperar a anterior; sem fila, dois inventários
+        // do mesmo personagem se intercalavam e o mais velho podia ficar.
         case "actor.update":
-          result = await this.#updateActor(actor_id, payload);
+          result = await this.fila(String(actor_id), () => this.#updateActor(actor_id, payload));
           break;
         case "actor.delete":
-          result = await this.#deleteActor(actor_id);
+          result = await this.fila(String(actor_id), () => this.#deleteActor(actor_id));
           break;
         // IMPL-47: a ficha JÁ CALCULADA pelo dnd5e (efeitos aplicados). Só
-        // leitura. Volta sob `data`, como os comandos do compêndio.
+        // leitura. Volta sob `data`, como os comandos do compêndio. Na fila
+        // também: lida no meio de uma troca de inventário, sairia pela metade.
         case "actor.read":
-          result = { data: readActor(actor_id, MODULE_ID) };
+          result = { data: await this.fila(String(actor_id), () => readActor(actor_id, MODULE_ID)) };
           break;
         // LEITURA (FASE 1). Devolvem sob `data` — é o campo que o Durable
         // Object repassa ao Companion; `actor_id` (usado pelos actor.*) não
@@ -303,8 +308,9 @@ export class BridgeClient {
 
   /**
    * Resolve a payload item against the compendiums via its `compendium_hint`.
-   * Exact slug match only — source_key first, then name (equipping the wrong
-   * item is worse than a shell). On a match, returns the full compendium item
+   * uuid first (FVT-15), then exact slug match — source_key without the source
+   * prefix, the whole source_key, then the name (casar-compendio.js; equipping
+   * the wrong item is worse than a shell). On a match, returns the full compendium item
    * (system, ActiveEffects, activities) with the Companion's fields on top;
    * returns null to fall back to the payload shell.
    */
@@ -312,13 +318,26 @@ export class BridgeClient {
     const hint = item?.flags?.[MODULE_ID]?.compendium_hint;
     if (!hint) return null;
 
-    const index = await this.#getCompendiumIndex();
-    const match =
-      (hint.source_key ? index.get(slugify(hint.source_key)) : null) ??
-      (hint.name ? index.get(slugify(hint.name)) : null);
-    if (!match) return null;
-
-    const doc = await match.pack.getDocument(match.id);
+    // FVT-15 (LOTE 08): o item exato escolhido no espelho do compêndio. Pelo
+    // nome, o pack do sistema ganhava do pack da campanha — outro item, outros
+    // efeitos. (`fromUuid` é global no Foundry; na falta dele, segue pelo nome.)
+    let doc = null;
+    const uuid = uuidDoHint(hint);
+    const resolverUuid = foundry.utils?.fromUuid ?? globalThis.fromUuid;
+    if (uuid && typeof resolverUuid === "function") {
+      try {
+        const achado = await resolverUuid(uuid);
+        if (achado instanceof Item) doc = achado;
+      } catch (err) {
+        this.log(`compendium uuid ${uuid} não resolveu: ${err?.message ?? err}`);
+      }
+    }
+    if (!doc) {
+      const index = await this.#getCompendiumIndex();
+      const match = chavesDoHint(hint).map((chave) => index.get(chave)).find(Boolean);
+      if (!match) return null;
+      doc = await match.pack.getDocument(match.id);
+    }
     if (!doc) return null;
 
     const data = doc.toObject();
@@ -434,85 +453,101 @@ export class BridgeClient {
   }
 
   async #updateActorSegurado(actor, payload) {
-
-    const { items, ...actorData } = payload ?? {};
+    // LOTE 08: as SAÍDAS (itens que deixaram este personagem no Companion —
+    // descartados, consumidos, trocados) vêm nas flags do envio. O módulo 1.7
+    // as grava como flag do ator e segue; aqui são lidas e não vão ao ator.
+    const { items, flags: flagsDoEnvio, ...actorData } = payload ?? {};
+    const nossas = flagsDoEnvio?.[MODULE_ID] ?? {};
+    const saidas = new Set(Array.isArray(nossas.saidas) ? nossas.saidas.filter((x) => typeof x === "string") : []);
+    const { saidas: _saidas, ...outrasNossas } = nossas;
+    const outrasFlags = { ...(flagsDoEnvio ?? {}) };
+    delete outrasFlags[MODULE_ID];
+    if (Object.keys(outrasNossas).length) outrasFlags[MODULE_ID] = outrasNossas;
+    if (Object.keys(outrasFlags).length) actorData.flags = outrasFlags;
     if (Object.keys(actorData).length) await actor.update(actorData, { companionBridge: true });
 
-    if (Array.isArray(items)) {
-      /*
-       * ITEM NATIVO DO FOUNDRY QUE JÁ TEM CRACHÁ = o MESMO item da linha do
-       * Companion, não um item a mais.
-       *
-       * Ele chegou aqui pelo caminho de volta (equip-sync `item.upsert`), e o
-       * Companion guardou uma linha para ele. Como NÃO é `synced`, o passo de
-       * baixo não o apaga — e sem esta distinção o payload criaria uma CÓPIA
-       * ao lado do original, toda vez. Com o push virando automático (gatilho
-       * no banco), isso passaria a acontecer a cada mudança de inventário.
-       *
-       * Nele a gente ATUALIZA NO LUGAR, e só o que o Companion manda: se está
-       * equipado e quantas unidades. Nome, arte, efeitos e activities são do
-       * item de verdade do Foundry — que é justamente o que faz o dnd5e
-       * aplicar CA e bônus ao equipar. Substituir seria trocar o item bom pela
-       * casca.
-       */
-      const nativosPorCracha = new Map();
-      for (const existente of actor.items) {
-        if (existente.getFlag(MODULE_ID, "synced")) continue;
-        const cracha =
-          existente.getFlag(MODULE_ID, "item_id") ?? existente.flags?.companion?.item_id ?? null;
-        if (cracha) nativosPorCracha.set(cracha, existente);
-      }
+    if (!Array.isArray(items)) return { actor_id: actor.id };
 
-      const paraCriar = [];
-      const paraAtualizar = [];
-      for (const item of items) {
-        const cracha = item?.flags?.[MODULE_ID]?.item_id ?? item?.flags?.companion?.item_id ?? null;
-        const nativo = cracha ? nativosPorCracha.get(cracha) : null;
-        if (!nativo) {
-          paraCriar.push(item);
-          continue;
-        }
-        const mudanca = { _id: nativo.id };
-        if (item?.system?.equipped !== undefined && "equipped" in (nativo.system ?? {})) {
-          mudanca["system.equipped"] = item.system.equipped;
-        }
-        if (item?.system?.quantity !== undefined && "quantity" in (nativo.system ?? {})) {
-          mudanca["system.quantity"] = item.system.quantity;
-        }
-        // Só vale a viagem se houver algo além do _id.
-        if (Object.keys(mudanca).length > 1) paraAtualizar.push(mudanca);
-      }
+    /*
+     * O PLANO (plano-inventario.js, com as regras e os testes): o que o ator
+     * já tem é ATUALIZADO NO LUGAR — equipado, a diferença de quantidade que o
+     * Companion mudou e, na cópia deste módulo, nome e imagem. Até a v1.7 as
+     * cópias eram apagadas e recriadas a cada envio, e a sintonia, as cargas e
+     * os usos feitos aqui sumiam. Nativo só sai quando o Companion diz que o
+     * item saiu do personagem.
+     */
+    const existentes = actor.items.map((i) => ({
+      id: i.id,
+      cracha: getCompanionItemId(i),
+      synced: !!i.getFlag(MODULE_ID, "synced"),
+      sincronizavel: isSyncableItem(i),
+      temEquipado: "equipped" in (i.system ?? {}),
+      equipado: i.system?.equipped,
+      temQuantidade: "quantity" in (i.system ?? {}),
+      quantidade: i.system?.quantity,
+      ajusteAplicado: i.getFlag(MODULE_ID, "ajuste_aplicado"),
+      nome: i.name,
+      img: i.img,
+    }));
+    const recebidos = items.map((item) => {
+      const nossa = item?.flags?.[MODULE_ID] ?? {};
+      return {
+        cracha: nossa.item_id ?? item?.flags?.companion?.item_id ?? null,
+        equipado: item?.system?.equipped,
+        quantidade: item?.system?.quantity,
+        ajuste: typeof nossa.ajuste_total === "number" ? nossa.ajuste_total : undefined,
+        nome: item?.name,
+        img: item?.img,
+        dados: item,
+      };
+    });
+    const plano = planejarInventario({
+      existentes,
+      recebidos,
+      saidas,
+      apagadosHaPouco: crachasApagadosHaPouco(actor.id),
+    });
 
-      // Prepara ANTES de apagar: a resolução pelo compêndio (índice de todos os
-      // packs na primeira vez, um getDocument por item) é a parte lenta, e
-      // feita depois do delete deixava o actor sem os itens nesse intervalo.
-      const preparados = paraCriar.length ? await this.#prepareItems(paraCriar) : [];
+    // Prepara ANTES de mexer no ator: a resolução pelo compêndio (índice de
+    // todos os packs na primeira vez, um documento por item) é a parte lenta.
+    // O item novo nasce com a quantidade do Companion e marca o ajuste que já
+    // está nela.
+    const paraCriar = plano.criar.map((r) => {
+      const dados = foundry.utils.deepClone(r.dados);
+      if (Number.isFinite(r.ajuste)) foundry.utils.setProperty(dados, `flags.${MODULE_ID}.ajuste_aplicado`, r.ajuste);
+      return dados;
+    });
+    const preparados = paraCriar.length ? await this.#prepareItems(paraCriar) : [];
 
-      // Troca só o que ESTE módulo criou; o que o GM pôs à mão fica de pé.
-      const syncedIds = actor.items.filter((i) => i.getFlag(MODULE_ID, "synced")).map((i) => i.id);
-      if (syncedIds.length) await actor.deleteEmbeddedDocuments("Item", syncedIds, { companionBridge: true });
-      if (paraAtualizar.length) {
-        await actor.updateEmbeddedDocuments("Item", paraAtualizar, { companionBridge: true });
-      }
-      if (preparados.length) {
-        const criados = await actor.createEmbeddedDocuments("Item", preparados, { companionBridge: true });
-        // IMPL-47: os efeitos dos itens recém-criados voltam ao Companion. Sem
-        // await — a resposta do actor.update não espera pela volta.
-        //
-        // Só de item resolvido pelo compêndio (ou que tenha efeito): a CASCA
-        // (sem match) nasce sem efeito porque o módulo não achou o item, não
-        // porque o item não tenha bônus — mandar o `[]` dela apagava no
-        // Companion o bônus que veio do espelho do compêndio. Efeito mexido
-        // depois, no Foundry, volta pelo live-sync normalmente.
-        const comEfeitoConhecido = criados.filter(
-          (i) => i.getFlag(MODULE_ID, "compendio") || (i.effects?.size ?? 0) > 0,
-        );
-        void reportCreatedEffects(actor, comEfeitoConhecido);
-      }
-      this.log(
-        `inventário: ${paraCriar.length} criado(s), ${paraAtualizar.length} nativo(s) atualizado(s) no lugar, ${syncedIds.length} substituído(s)`
-      );
+    if (plano.apagar.length) {
+      await actor.deleteEmbeddedDocuments("Item", plano.apagar, { companionBridge: true });
     }
+    let atualizados = [];
+    if (plano.atualizar.length) {
+      atualizados = await actor.updateEmbeddedDocuments("Item", plano.atualizar.map(paraDocumento), { companionBridge: true });
+    }
+    let criados = [];
+    if (preparados.length) {
+      criados = await actor.createEmbeddedDocuments("Item", preparados, { companionBridge: true });
+      // IMPL-47: os efeitos dos itens recém-criados voltam ao Companion. Sem
+      // await — a resposta do actor.update não espera pela volta.
+      //
+      // Só de item resolvido pelo compêndio (ou que tenha efeito): a CASCA
+      // (sem match) nasce sem efeito porque o módulo não achou o item, não
+      // porque o item não tenha bônus — mandar o `[]` dela apagava no
+      // Companion o bônus que veio do espelho do compêndio. Efeito mexido
+      // depois, no Foundry, volta pelo live-sync normalmente.
+      const comEfeitoConhecido = criados.filter(
+        (i) => i.getFlag(MODULE_ID, "compendio") || (i.effects?.size ?? 0) > 0,
+      );
+      void reportCreatedEffects(actor, comEfeitoConhecido);
+    }
+    // A quantidade que o Foundry ficou (depois da diferença) e a sintonia dos
+    // itens tocados voltam ao Companion: ele passa a mostrar o número daqui.
+    agendarEstado(actor, [...atualizados, ...criados]);
+    this.log(
+      `inventário: ${criados.length} criado(s), ${atualizados.length} atualizado(s) no lugar, ${plano.apagar.length} apagado(s)`
+    );
     return { actor_id: actor.id };
   }
 
@@ -523,4 +558,15 @@ export class BridgeClient {
     await actor.delete({ companionBridge: true });
     return { actor_id: actorId };
   }
+}
+
+/** Mudança do plano → atualização de documento do Foundry. */
+function paraDocumento(m) {
+  const doc = { _id: m._id };
+  if (m.equipado !== undefined) doc["system.equipped"] = m.equipado;
+  if (m.quantidade !== undefined) doc["system.quantity"] = m.quantidade;
+  if (m.ajusteAplicado !== undefined) doc[`flags.${MODULE_ID}.ajuste_aplicado`] = m.ajusteAplicado;
+  if (m.nome !== undefined) doc.name = m.nome;
+  if (m.img !== undefined) doc.img = m.img;
+  return doc;
 }

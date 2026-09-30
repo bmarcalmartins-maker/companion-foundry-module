@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Só para os testes (node --test). O módulo roda no Foundry sem build nem dependência.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

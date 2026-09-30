@@ -4,13 +4,23 @@ import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
 /**
  * Mão de volta Foundry→Companion (edge function foundry-inbound).
  *
- * Dois eventos saem daqui:
- *  - EQUIPAR/DESEQUIPAR item com crachá do Companion → POST { actor_id,
- *    item_id, equipped } (rota original da foundry-inbound).
+ * Os eventos que saem daqui:
+ *  - ESTADO de item com crachá do Companion (v1.8.0, LOTE 08): equipar,
+ *    quantidade e sintonia mudaram → POST { op: "item.estado", actor_id,
+ *    items: [{ item_id, equipped, qty, attuned, attunement }] }, agrupado por
+ *    actor e lido na hora do envio. O Foundry é a verdade da quantidade, das
+ *    cargas e da sintonia (decisões do Bruno de 29/09: B e B); até a v1.7 só
+ *    o equipar voltava.
+ *  - ITEM APAGADO aqui com crachá → POST { op: "item.delete", actor_id,
+ *    item_id }: a poção gasta sai do Companion também. Até a v1.7 o apagar não
+ *    voltava, e o envio seguinte do Companion recriava o item.
  *  - ITEM NOVO no actor (createItem, ou updateItem de item sem crachá) →
  *    POST { op: "item.upsert", ... } com o item completo; a resposta traz o
  *    items.id do Companion, gravado no item como crachá — o item nativo do
  *    Foundry ganha identidade do Companion e os equips seguintes sincronizam.
+ *    Item novo que chega com crachá ALHEIO (o mesmo crachá está num item de
+ *    outro personagem: foi arrastado de lá) perde o crachá antes: é outro
+ *    item, deste actor.
  *  - SYNC INICIAL: syncActorInventory(actor) envia todo o inventário de uma
  *    vez (itens que existiam antes da ponte), no ritmo do rate-limit da edge.
  *
@@ -24,11 +34,11 @@ import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
  *  2. IDENTIDADE: item que veio do Companion carrega flags[MODULE_ID].synced
  *     e o crachá item_id. createItem/upsert descartam itens synced ou já
  *     com crachá — só item genuinamente novo do Foundry viaja.
- *  3. ESTRUTURAL: o sync Companion→Foundry é DELETE+CREATE de itens synced
- *     (bridge-client.js #updateActor) — nunca dispara updateItem; e o único
- *     write que o Companion faz na volta é equipped no banco. Esse write DISPARA
- *     push automático pro Foundry (gatilho em character_items, IMPL-40), e o
- *     ciclo converge em 1 volta: as camadas 1 e 2 barram o reenvio.
+ *  3. ESTRUTURAL: o que a volta grava no Companion (equipado, quantidade)
+ *     dispara o envio de volta (gatilho em character_items), e o envio chega
+ *     aqui como atualização NO LUGAR com o mesmo valor — nada muda, nada volta.
+ *     A quantidade que o Foundry manda não conta como mudança do Companion
+ *     (só o que o Companion mudou vai como diferença; plano-inventario.js).
  */
 
 /** Tipos dnd5e físicos que fazem sentido no inventário do Companion. */
@@ -46,7 +56,7 @@ function isNativeWeapon(item) {
 }
 
 /** Item elegível pra viajar pro Companion: físico e NÃO nativo. */
-function isSyncableItem(item) {
+export function isSyncableItem(item) {
   return PHYSICAL_TYPES.has(item?.type) && !isNativeWeapon(item);
 }
 
@@ -209,7 +219,18 @@ function buildUpsertPayload(item, actor) {
     img: item.img ?? "",
     qty: item.system?.quantity ?? 1,
     equipped: item.system?.equipped === true,
+    // Sintonia (v1.8.0): o Foundry é a verdade. Campo que o item não tem não vai.
+    ...camposDeSintonia(item),
   };
+}
+
+/** `attuned`/`attunement` do dnd5e, só quando o item tem o campo. */
+function camposDeSintonia(item) {
+  const sys = item?.system ?? {};
+  const campos = {};
+  if (typeof sys.attuned === "boolean") campos.attuned = sys.attuned;
+  if (typeof sys.attunement === "string") campos.attunement = sys.attunement;
+  return campos;
 }
 
 /**
@@ -390,6 +411,144 @@ export async function reportItemEffects(actor, items, tentativa = 0) {
 export const reportCreatedEffects = reportItemEffects;
 
 /* -------------------------------------------- */
+/*  Estado e exclusão (v1.8.0, LOTE 08)         */
+/* -------------------------------------------- */
+
+const ESPERA_ESTADO_MS = 800;
+const ESPERA_429_MS = 5_000;
+const MAX_ITENS_POR_ESTADO = 100; // a edge aceita até 100 por chamada
+const RETENTATIVAS = 3;
+
+const estadoPendente = new Map(); // actorId -> Set(itemId)
+const timersEstado = new Map();
+const estadoEmVoo = new Set();
+
+/** Estado de um item com crachá, lido AGORA — o que o Companion grava. */
+function estadoDoItem(item) {
+  const sys = item?.system ?? {};
+  const estado = { item_id: getCompanionItemId(item) };
+  if (typeof sys.equipped === "boolean") estado.equipped = sys.equipped;
+  if (Number.isFinite(sys.quantity)) estado.qty = sys.quantity;
+  return { ...estado, ...camposDeSintonia(item) };
+}
+
+/**
+ * Agenda o envio do estado destes itens (agrupado por actor, 800 ms). Lido na
+ * hora do envio, não na do evento: três cliques seguidos viram um POST com o
+ * valor final. Um POST por actor de cada vez; o que mudar durante o voo vai
+ * no seguinte.
+ */
+export function agendarEstado(actor, items) {
+  if (!(actor instanceof Actor) || actor.type !== "character" || !isReportingGm()) return;
+  const pendentes = estadoPendente.get(actor.id) ?? new Set();
+  for (const item of items ?? []) {
+    if (item?.id && getCompanionItemId(item) && isSyncableItem(item)) pendentes.add(item.id);
+  }
+  if (!pendentes.size) return;
+  estadoPendente.set(actor.id, pendentes);
+  armarEstado(actor.id, ESPERA_ESTADO_MS);
+}
+
+function armarEstado(actorId, ms, tentativa = 0) {
+  clearTimeout(timersEstado.get(actorId));
+  timersEstado.set(actorId, setTimeout(() => {
+    timersEstado.delete(actorId);
+    void enviarEstado(actorId, tentativa);
+  }, ms));
+}
+
+async function enviarEstado(actorId, tentativa) {
+  if (estadoEmVoo.has(actorId)) {
+    armarEstado(actorId, ESPERA_ESTADO_MS, tentativa);
+    return;
+  }
+  const actor = game.actors.get(actorId);
+  const ids = [...(estadoPendente.get(actorId) ?? [])];
+  estadoPendente.delete(actorId);
+  if (!actor || !ids.length) return;
+  const itens = ids
+    .map((id) => actor.items.get(id))
+    .filter((i) => i && getCompanionItemId(i))
+    .map(estadoDoItem);
+  if (!itens.length) return;
+
+  estadoEmVoo.add(actorId);
+  try {
+    for (let i = 0; i < itens.length; i += MAX_ITENS_POR_ESTADO) {
+      const lote = itens.slice(i, i + MAX_ITENS_POR_ESTADO);
+      const res = await postInbound({ op: "item.estado", actor_id: actorId, items: lote }, { silencioso404: true });
+      if (res?.ok) {
+        if (res.fora?.length) {
+          console.warn(`${MODULE_ID} | estado: ${res.fora.length} item(ns) com crachá que o Companion não tem neste personagem`, res.fora);
+        }
+        continue;
+      }
+      if (res?.code === "actor_nao_vinculado") return;
+      // Limite, rede ou erro do servidor: tenta de novo (os ids voltam à fila).
+      if ((res === null || res?.status === 429 || res?.status >= 500) && tentativa < RETENTATIVAS) {
+        const faltam = estadoPendente.get(actorId) ?? new Set();
+        for (const it of itens.slice(i)) {
+          const doc = actor.items.find((x) => getCompanionItemId(x) === it.item_id);
+          if (doc) faltam.add(doc.id);
+        }
+        estadoPendente.set(actorId, faltam);
+        armarEstado(actorId, ESPERA_429_MS * (tentativa + 1), tentativa + 1);
+      }
+      return;
+    }
+    console.log(`${MODULE_ID} | estado → Companion: ${itens.length} item(ns) de "${actor.name}"`);
+  } finally {
+    estadoEmVoo.delete(actorId);
+  }
+}
+
+/*
+ * Item apagado AQUI (não pela ponte). Três cuidados:
+ *  - "apagado há pouco": um envio do Companion que saiu antes de a exclusão
+ *    chegar lá ainda traz o item — e não pode recriá-lo (plano-inventario.js);
+ *  - espera 1,5 s e confere se o actor ainda existe: apagar o personagem
+ *    inteiro não é apagar os itens dele no Companion;
+ *  - e se outro item do mesmo actor ficou com o crachá: é troca (a
+ *    reimportação do personagem apaga e recria os itens com as mesmas flags),
+ *    não exclusão.
+ */
+const APAGADO_HA_POUCO_MS = 2 * 60_000;
+const ESPERA_APAGADO_MS = 1_500;
+const apagados = new Map(); // actorId -> Map(cracha -> quando)
+
+export function crachasApagadosHaPouco(actorId) {
+  const doAtor = apagados.get(actorId);
+  if (!doAtor) return new Set();
+  const limite = Date.now() - APAGADO_HA_POUCO_MS;
+  for (const [cracha, quando] of doAtor) if (quando < limite) doAtor.delete(cracha);
+  if (!doAtor.size) apagados.delete(actorId);
+  return new Set(doAtor.keys());
+}
+
+function lembrarApagado(actorId, cracha) {
+  const doAtor = apagados.get(actorId) ?? new Map();
+  doAtor.set(cracha, Date.now());
+  apagados.set(actorId, doAtor);
+}
+
+async function avisarApagado(actorId, cracha, tentativa = 0) {
+  await new Promise((r) => setTimeout(r, tentativa === 0 ? ESPERA_APAGADO_MS : ESPERA_429_MS * tentativa));
+  const actor = game.actors.get(actorId);
+  if (!actor) return; // o personagem inteiro saiu: não é descarte de item
+  // Outro item deste actor com o mesmo crachá = o item foi TROCADO, não
+  // apagado (reimportação do personagem apaga e recria copiando as flags).
+  if (actor.items.some((i) => getCompanionItemId(i) === cracha)) return;
+  const res = await postInbound({ op: "item.delete", actor_id: actorId, item_id: cracha }, { silencioso404: true });
+  if (res?.ok) {
+    console.log(`${MODULE_ID} | apagado → Companion: ${cracha} (${res.removido ? "saiu do inventário" : "já não estava"})`);
+    return;
+  }
+  if ((res === null || res?.status === 429 || res?.status >= 500) && tentativa < RETENTATIVAS) {
+    void avisarApagado(actorId, cracha, tentativa + 1);
+  }
+}
+
+/* -------------------------------------------- */
 /*  Hooks                                       */
 /* -------------------------------------------- */
 
@@ -402,40 +561,83 @@ function eligibleActor(item) {
 }
 
 export function registerEquipWatcher() {
-  // EQUIPAR/DESEQUIPAR — updateItem com changes.system.equipped.
+  // ESTADO — equipar, quantidade, sintonia.
   Hooks.on("updateItem", async (item, changes, options, _userId) => {
     if (options?.companionBridge) return; // camada 1: veio do Companion
-    const equipped = changes?.system?.equipped;
-    if (typeof equipped !== "boolean") return; // só toggles de equip
+    const sys = changes?.system ?? {};
+    const equipped = sys.equipped;
+    const mudouEstado = typeof equipped === "boolean" || "quantity" in sys || "attuned" in sys || "attunement" in sys;
+    if (!mudouEstado) return;
     if (!isReportingGm()) return;
 
     const actor = eligibleActor(item);
     if (!actor) return;
 
-    const companionItemId = getCompanionItemId(item);
-    if (companionItemId) {
-      const res = await postInbound({ actor_id: actor.id, item_id: companionItemId, equipped });
-      if (res?.ok) console.log(`${MODULE_ID} | equip → Companion: "${item.name}" equipped=${equipped}`);
+    if (getCompanionItemId(item)) {
+      agendarEstado(actor, [item]);
       return;
     }
     // Sem crachá = item nativo que ainda não viajou — o upsert leva o estado
-    // de equipped junto e devolve o crachá (equips futuros vão pela rota leve).
-    if (!isBridgeManaged(item)) await enfileirarUpsert(item, actor);
+    // junto e devolve o crachá (como até a v1.7, no equipar).
+    if (typeof equipped === "boolean" && !isBridgeManaged(item)) await enfileirarUpsert(item, actor);
   });
 
   // ITEM NOVO no actor — manda completo pro Companion.
   Hooks.on("createItem", async (item, options, _userId) => {
-    if (options?.companionBridge) return;                       // camada 1
-    if (isBridgeManaged(item) || getCompanionItemId(item)) return; // camada 2
+    if (options?.companionBridge) return; // camada 1
     if (!isReportingGm()) return;
 
     const actor = eligibleActor(item);
     if (!actor) return;
 
+    const cracha = getCompanionItemId(item);
+    if (cracha) {
+      // Crachá que veio JUNTO. Se OUTRO personagem tem um item com ele, este é
+      // uma cópia arrastada de lá: é outro item, deste actor — sem o crachá
+      // alheio (senão o envio do Companion o apagaria e a volta mexeria no
+      // inventário do outro PC), e vai ao Companion como novo. Senão é o mesmo
+      // item recriado aqui (a reimportação do personagem copia as flags):
+      // fica como está, como até a v1.7.
+      const deOutro = game.actors.some?.(
+        (a) => a.id !== actor.id && a.items?.some?.((i) => i.id !== item.id && getCompanionItemId(i) === cracha),
+      );
+      if (!deOutro) return;
+      await item.update(
+        {
+          [`flags.${MODULE_ID}.-=synced`]: null,
+          [`flags.${MODULE_ID}.-=item_id`]: null,
+          [`flags.${MODULE_ID}.-=ajuste_aplicado`]: null,
+          "flags.companion.-=item_id": null,
+        },
+        { companionBridge: true },
+      );
+    } else if (isBridgeManaged(item)) {
+      return; // marca de cópia sem crachá: sobra de versão velha, fica de fora
+    }
     await enfileirarUpsert(item, actor);
   });
 
-  console.log(`${MODULE_ID} | equip watcher registrado (updateItem + createItem)`);
+  // ITEM APAGADO aqui — sai do Companion também.
+  Hooks.on("deleteItem", (item, options, _userId) => {
+    if (options?.companionBridge) return; // camada 1: a ponte apagou
+    if (!isReportingGm()) return;
+    const actor = eligibleActor(item);
+    if (!actor) return;
+    const cracha = getCompanionItemId(item);
+    if (!cracha) return;
+    lembrarApagado(actor.id, cracha);
+    void avisarApagado(actor.id, cracha);
+  });
+
+  // Ao abrir o mundo, o estado dos itens com crachá vai uma vez: a sintonia,
+  // por exemplo, nunca tinha ido ao Companion.
+  setTimeout(() => {
+    for (const actor of game.actors.filter((a) => a.type === "character")) {
+      agendarEstado(actor, actor.items.filter((i) => getCompanionItemId(i)));
+    }
+  }, 6_000);
+
+  console.log(`${MODULE_ID} | equip watcher registrado (estado + createItem + deleteItem)`);
 }
 
 /* -------------------------------------------- */
