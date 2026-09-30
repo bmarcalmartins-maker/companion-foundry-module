@@ -9,6 +9,11 @@ Convenção: **FATO** = verificado por leitura de código/SELECT/saída de coman
 **HIPÓTESE** = só o teste ao vivo no Foundry confirma (nenhum Foundry rodou
 nas sessões de implementação).
 
+⚠️ **Desde a 1.8.0 (30/09, LOTE 08 do Raio-X) o envio atualiza no lugar e a
+volta tem exclusão** — ver §6.7. O resto deste documento é o registro de
+11/07 e 25/07; onde ele diz "delete+create" ou "deletar no Foundry não deleta
+no Companion", vale a §6.7.
+
 ---
 
 ## 1. Arquitetura final
@@ -17,10 +22,12 @@ nas sessões de implementação).
 COMPANION → FOUNDRY (já existia, melhorada na Fase B1)
   botão no Companion → edge push-to-foundry → Worker (WS) → módulo
   → delete+create dos itens synced no actor
+    (até a 1.7; desde a 1.8.0, atualiza no lugar — §6.7)
 
 FOUNDRY → COMPANION (novo, Fases B2+B3)
   hook no módulo (updateItem/createItem) → POST HTTP direto →
   edge foundry-inbound (x-foundry-inbound-key) → items/character_items
+    (desde a 1.8.0 também deleteItem, e o estado vai em item.estado — §6.7)
 ```
 
 O crachá que liga os dois mundos: `flags["companion-foundry-bridge"].item_id`
@@ -102,6 +109,10 @@ manda de volta → Companion cria de novo → infinito. Barrado por:
    update → não dispara `updateItem`; e o único write da volta é
    `character_items.equipped`/upsert no banco, que NÃO gera push automático
    pro Foundry (push-to-foundry é botão manual — `JogadoresTab.tsx`).
+   *(Superado: desde o IMPL-40 o push é automático, por gatilho no banco, e
+   desde a 1.8.0 o envio é `update` no lugar. O eco morre nas camadas 1 e 2:
+   as operações da ponte levam `companionBridge: true`, que a volta descarta,
+   e item com a marca `synced` não viaja como novo. Ver §6.7.)*
 
 Extra: equipar VIA Companion hoje nem chega ao Foundry em tempo real (só no
 re-sync manual do inventário, que agora CARREGA o equipped — Fase B1 — e
@@ -247,10 +258,51 @@ await api.syncInventory(actor);  // 3. reenvia tudo, ~7s por item
 
 O passo 2 é do lado do Companion e é destrutivo — não sai daqui.
 
+## 6.7 Desde a 1.8.0: quem manda em quê (LOTE 08 do Raio-X, 30/09)
+
+Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**
+(só com crachá). O repositório principal tem a outra metade (banco e edges) e o
+roteiro de teste com o Foundry aberto (`docs/CONTEXTO-RAIO-X-PLANO-2026-09-28.md`,
+LOTE 08).
+
+**O envio (`bridge-client.js` + `plano-inventario.js`)**
+- Um comando por actor de cada vez (`fila-por-ator.js`): `actor.update`,
+  `actor.delete` e `actor.read` do mesmo actor esperam o anterior.
+- Item que o ator já tem (mesmo crachá) é **atualizado no lugar**: equipado
+  sempre; nome e imagem só na cópia do módulo. Sintonia, cargas e usos nunca —
+  são do Foundry.
+- Quantidade só vale ao CRIAR. Depois, o envio traz o total acumulado do que o
+  COMPANION mudou (`ajuste_total`), e o item guarda o que já aplicou
+  (`flags.companion-foundry-bridge.ajuste_aplicado`): aplica só a diferença.
+  Sem `ajuste_total` no envio (Companion anterior ao LOTE 08), a quantidade
+  não é tocada.
+- Apagar: cópia do módulo fora do envio sai (como sempre); **nativo com crachá
+  só sai se o crachá estiver nas saídas** (`flags.companion-foundry-bridge.saidas`,
+  o que saiu do personagem no Companion nos últimos 30 dias). Arma natural,
+  magia e talento nunca saem. Crachá apagado aqui há menos de 2 min não é
+  recriado.
+- O item do compêndio: `compendium_hint.uuid` (o item escolhido no espelho)
+  antes do nome; a chave do catálogo perde o prefixo da fonte
+  (`casar-compendio.js`).
+
+**A volta (`equip-sync.js`)**
+- Equipado, quantidade e sintonia mudados aqui vão num `item.estado` por actor,
+  agrupados por 800 ms, até 100 itens por chamada, lidos do item na hora de
+  enviar.
+- Item com crachá apagado aqui vai num `item.delete` depois de 1,5 s. Não vai
+  se nesse tempo o mesmo crachá reaparecer no ator (reimportação) nem se o
+  personagem inteiro foi apagado.
+- Item novo com crachá de OUTRO personagem (arrastado de lá) perde o crachá e
+  as marcas da ponte e entra como item novo (`item.upsert`).
+- 6 s depois de abrir o mundo, o estado dos itens com crachá vai uma vez (a
+  sintonia nunca tinha ido).
+
+⚠️ Não verificado num Foundry de verdade: `npm test` usa um Foundry falso.
+
 ## 7. Limitações conhecidas (por design, MVP)
 
-- **Deletar item no Foundry NÃO deleta no Companion** (sem hook deleteItem —
-  decisão de escopo; a edge também não tem rota de delete).
+- ~~**Deletar item no Foundry NÃO deleta no Companion**~~ — até a 1.7. Desde
+  a 1.8.0 deleta: `item.delete` (§6.7).
 - Sync inicial é sequencial (~7s/item) por causa do rate-limit da edge.
 - Item do Foundry vira texto no Companion (descrição sem HTML); stats viram
   resumo curto em `properties` (ex.: `1d8+1 slashing · CA 14`).
