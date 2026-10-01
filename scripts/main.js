@@ -3,6 +3,7 @@ import { BridgeClient } from "./bridge-client.js";
 import { registerEquipWatcher, syncActorInventory, resetActorLink } from "./equip-sync.js";
 import { listItems, listPacks } from "./compendium.js";
 import { registerLiveSync } from "./live-sync.js";
+import { registerMoedasSync } from "./moedas-sync.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -71,4 +72,6 @@ Hooks.once("ready", async () => {
   registerEquipWatcher();
   // IMPL-47 v1.7.0: a ficha e os efeitos vão ao Companion quando mudam AQUI.
   registerLiveSync();
+  // v1.9.0: as moedas, nos dois sentidos (moedas-sync.js).
+  registerMoedasSync();
 });

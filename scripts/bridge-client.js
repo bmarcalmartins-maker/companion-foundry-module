@@ -10,6 +10,7 @@ import {
 import { readActor } from "./actor-read.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
 import { criarFila } from "./fila-por-ator.js";
+import { aplicarMoedasDoCompanion } from "./moedas-sync.js";
 import { planejarInventario } from "./plano-inventario.js";
 import { chavesDoHint, slugify, uuidDoHint } from "./casar-compendio.js";
 
@@ -456,17 +457,24 @@ export class BridgeClient {
     // LOTE 08: as SAÍDAS (itens que deixaram este personagem no Companion —
     // descartados, consumidos, trocados) vêm nas flags do envio. O módulo 1.7
     // as grava como flag do ator e segue; aqui são lidas e não vão ao ator.
+    // v1.9.0: as MOEDAS também (moedas-sync.js) — o 1.8.0 só as gravava como
+    // flag, sem aplicar.
     const { items, flags: flagsDoEnvio, ...actorData } = payload ?? {};
     const nossas = flagsDoEnvio?.[MODULE_ID] ?? {};
     const saidas = new Set(Array.isArray(nossas.saidas) ? nossas.saidas.filter((x) => typeof x === "string") : []);
-    const { saidas: _saidas, ...outrasNossas } = nossas;
+    const { saidas: _saidas, moedas: moedasDoEnvio, ...outrasNossas } = nossas;
     const outrasFlags = { ...(flagsDoEnvio ?? {}) };
     delete outrasFlags[MODULE_ID];
     if (Object.keys(outrasNossas).length) outrasFlags[MODULE_ID] = outrasNossas;
     if (Object.keys(outrasFlags).length) actorData.flags = outrasFlags;
     if (Object.keys(actorData).length) await actor.update(actorData, { companionBridge: true });
 
-    if (!Array.isArray(items)) return { actor_id: actor.id };
+    // A decisão das moedas volta na resposta (`data.moedas`) para a edge
+    // registrar: aplicadas, iguais, envio velho ou "o Foundry vence".
+    const moedas = moedasDoEnvio !== undefined ? await aplicarMoedasDoCompanion(actor, moedasDoEnvio) : undefined;
+    const resposta = moedas ? { actor_id: actor.id, data: { moedas } } : { actor_id: actor.id };
+
+    if (!Array.isArray(items)) return resposta;
 
     /*
      * O PLANO (plano-inventario.js, com as regras e os testes): o que o ator
@@ -548,7 +556,7 @@ export class BridgeClient {
     this.log(
       `inventário: ${criados.length} criado(s), ${atualizados.length} atualizado(s) no lugar, ${plano.apagar.length} apagado(s)`
     );
-    return { actor_id: actor.id };
+    return resposta;
   }
 
   async #deleteActor(actorId) {

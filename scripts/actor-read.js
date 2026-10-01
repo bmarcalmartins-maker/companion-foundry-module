@@ -20,9 +20,17 @@
  *
  * Regra: só vai NÚMERO. Campo que não existir ou não for número é OMITIDO —
  * a tela do Companion mostra "—", nunca um valor inventado.
+ *
+ * v1.9.0 (schema 2): também `moedas` (system.currency, as cinco) e
+ * `inventario` — TODOS os itens físicos (os mesmos que a volta manda ao
+ * Companion: isSyncableItem), com quantidade, equipado e sintonia. É o que a
+ * conferência Companion × Foundry compara (qa/conferencia-inventario no
+ * repositório principal). `equipped` continua igual, para quem já o lê.
  */
 
 import { efeitoEnxuto } from "./effect-shape.js";
+import { camposDeSintonia, getCompanionItemId, isSyncableItem } from "./equip-sync.js";
+import { moedasValidas } from "./moedas.js";
 
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -69,8 +77,18 @@ export function readActor(actorId, moduleId) {
       effects: Array.from(i.effects ?? []).map(efeitoEnxuto),
     }));
 
+  const inventario = actor.items.filter(isSyncableItem).map((i) => ({
+    id: i.id,
+    name: i.name,
+    type: i.type,
+    companion_item_id: getCompanionItemId(i),
+    qty: num(i.system?.quantity),
+    equipped: typeof i.system?.equipped === "boolean" ? i.system.equipped : undefined,
+    ...camposDeSintonia(i),
+  }));
+
   return {
-    schema: 1,
+    schema: 2,
     actor_id: actor.id,
     name: actor.name,
     system_version: game.system?.version ?? null,
@@ -102,5 +120,7 @@ export function readActor(actorId, moduleId) {
     prof: num(attrs.prof),
     init: { total: num(attrs.init?.total), mod: num(attrs.init?.mod) },
     equipped,
+    moedas: moedasValidas(sys.currency) ?? undefined,
+    inventario,
   };
 }

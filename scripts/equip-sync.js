@@ -225,7 +225,7 @@ function buildUpsertPayload(item, actor) {
 }
 
 /** `attuned`/`attunement` do dnd5e, só quando o item tem o campo. */
-function camposDeSintonia(item) {
+export function camposDeSintonia(item) {
   const sys = item?.system ?? {};
   const campos = {};
   if (typeof sys.attuned === "boolean") campos.attuned = sys.attuned;

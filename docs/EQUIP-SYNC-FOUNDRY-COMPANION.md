@@ -299,6 +299,46 @@ até 30/09 era a seção 3r do `docs/CONTEXTO-RAIO-X-PLANO-2026-09-28.md`).
 
 ⚠️ Não verificado num Foundry de verdade: `npm test` usa um Foundry falso.
 
+## 6.8 Desde a 1.9.0: o ouro (frente OURO do Companion, 01/10)
+
+O ouro de cada personagem é o MESMO nos dois lados, nas cinco moedas do dnd5e
+(`system.currency`: pp, gp, ep, sp, cp). O repositório principal tem a outra
+metade (banco, edges, telas) e o roteiro de teste:
+`docs/economia/RELATORIO-OURO.md`.
+
+**Ida (`bridge-client.js` → `moedas-sync.js`).** O envio do Companion traz
+`flags.companion-foundry-bridge.moedas = { pp, gp, ep, sp, cp, versao }`. A
+`versao` é a da carteira no Companion: sobe a cada mudança. O ator guarda o
+último acordo na flag `moedas_sync` (as cinco moedas e a versão). As regras
+estão em `moedas.js` (`decidirMoedas`), com testes:
+
+| situação | o que acontece |
+|---|---|
+| ator sem `moedas_sync` (primeiro contato) | **o Foundry vence**: as moedas daqui vão ao Companion |
+| moedas daqui ≠ `moedas_sync` (o Foundry mudou depois) | **o Foundry vence** |
+| `versao` do envio ≤ a de `moedas_sync` | envio velho: ignorado |
+| senão | aplica as do Companion (`companionBridge: true`) e anota a versão |
+
+A decisão volta na resposta do `actor.update` (`data.moedas`).
+
+O módulo 1.8.0 não conhece a chave: grava `moedas` como flag do ator e não
+aplica nada. Por isso a edge pode sair antes do módulo.
+
+**Volta.** `updateActor` com `system.currency` nas mudanças, sem a marca
+`companionBridge`, manda `{ op: "actor.moedas", actor_id, moedas }` à
+foundry-inbound. O envio é agrupado por 800 ms e tenta de novo em 429, 5xx ou
+rede. A resposta traz a `versao` nova da carteira, que vira `moedas_sync`.
+
+8 s depois de abrir o mundo, todo personagem sem `moedas_sync`, ou com moedas
+diferentes dela, manda as dele.
+
+**Ficha (`actor.read`, schema 2).** Também leva `moedas` e `inventario`: todo
+item físico (o mesmo filtro da volta), com crachá, quantidade, equipado e
+sintonia. É o que a conferência Companion × Foundry compara
+(`qa/conferencia-inventario/` no repositório principal).
+
+⚠️ Não verificado num Foundry de verdade: `npm test` usa um Foundry falso.
+
 ## 7. Limitações conhecidas (por design, MVP)
 
 - ~~**Deletar item no Foundry NÃO deleta no Companion**~~ — até a 1.7. Desde

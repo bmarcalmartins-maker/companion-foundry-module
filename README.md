@@ -63,6 +63,16 @@ Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
 - **O item exato do compêndio**: a pista traz o `uuid` do item escolhido no
   espelho; o módulo resolve por ele antes do nome (`scripts/casar-compendio.js`).
 
+### Ouro — desde a 1.9.0 (frente OURO, 01/10)
+
+- As cinco moedas do dnd5e (`system.currency`) são as mesmas no Companion, nos
+  dois sentidos (`scripts/moedas-sync.js`, regras em `scripts/moedas.js`).
+- **O Foundry vence** no primeiro contato e quando mudou as moedas depois do
+  último acordo (flag `moedas_sync`); envio velho do Companion é ignorado.
+- A ficha (`actor.read`, schema 2) leva também as moedas e o inventário
+  inteiro, para a conferência Companion × Foundry.
+- Detalhe: `docs/EQUIP-SYNC-FOUNDRY-COMPANION.md` §6.8.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -76,4 +86,5 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/status-app.js` — connection-status panel (ApplicationV2).
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
-- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js` — pure rules, tested in `test/`.
+- `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
+- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js` — pure rules, tested in `test/`.
