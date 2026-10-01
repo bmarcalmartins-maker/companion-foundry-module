@@ -86,7 +86,7 @@ class FakeActor {
     this.items = new Colecao(items.map((d) => { const i = new FakeItem(d, this); return [i.id, i]; }));
   }
   getFlag(scope, chave) { return this.flags?.[scope]?.[chave]; }
-  async update(dados, options) { this.ops.push({ op: "actor.update", dados, options, t: Date.now() }); }
+  async update(dados, options) { aplicar(this, dados); this.ops.push({ op: "actor.update", dados, options, t: Date.now() }); }
   async createEmbeddedDocuments(_tipo, dados, options) {
     if (this.lento) await espera(this.lento);
     const criados = dados.map((d) => new FakeItem(d, this));
@@ -159,9 +159,12 @@ globalThis.game = {
   system: { version: "5.3.3" },
   version: "14",
 };
+let versaoDaCarteira = 0;
 globalThis.fetch = async (url, init) => {
   const corpo = JSON.parse(init.body);
   chamadasInbound.push({ url, corpo, chave: init.headers["x-foundry-inbound-key"] });
+  // actor.moedas: a edge grava a carteira e devolve a versão nova.
+  if (corpo.op === "actor.moedas") return new Response(JSON.stringify({ ok: true, versao: ++versaoDaCarteira }), { status: 200 });
   return new Response(JSON.stringify({ ok: true, gravados: corpo.items?.length ?? 0, fora: [] }), { status: 200 });
 };
 // Os avisos de "não consegui ler a ficha" do live-sync (o ator falso não tem ficha) não interessam aqui.
@@ -296,6 +299,86 @@ test("o item do espelho é resolvido pelo uuid do compêndio (FVT-15)", async ()
   assert.equal(criado.system.attunement, "required", "o resto vem do item do compêndio");
   assert.equal(criado.system.equipped, true);
   assert.equal(criado.flags[MODULE_ID].compendio, true);
+});
+
+test("moedas (v1.9.0): primeiro contato e Foundry que mudou vencem; envio novo aplica; envio velho não", async () => {
+  const ator = new FakeActor({ id: "ator4", name: "Talaniel", items: [] });
+  ator.system = { currency: { pp: 0, gp: 10, ep: 0, sp: 0, cp: 0 } };
+  game.actors.set(ator.id, ator);
+  const moedasDoEnvio = (gp, versao) => ({ flags: { [MODULE_ID]: { moedas: { pp: 1, gp, ep: 0, sp: 2, cp: 3, versao } } } });
+  const enviosDeMoedas = () => chamadasInbound.filter((c) => c.corpo.op === "actor.moedas" && c.corpo.actor_id === "ator4");
+  chamadasInbound.length = 0;
+
+  // 1) Primeiro contato (sem moedas_sync): o Foundry vence e manda as dele.
+  let r = await comando({ request_id: "m1", action: "actor.update", actor_id: "ator4", payload: moedasDoEnvio(50, 3) });
+  assert.equal(r.ok, true);
+  assert.equal(r.data?.moedas, "foundry_vence");
+  assert.equal(ator.system.currency.gp, 10, "nada daqui é sobrescrito");
+  await espera(1200);
+  assert.equal(enviosDeMoedas().length, 1);
+  assert.deepEqual(enviosDeMoedas()[0].corpo.moedas, { pp: 0, gp: 10, ep: 0, sp: 0, cp: 0 });
+  const acordo = ator.flags[MODULE_ID]?.moedas_sync;
+  assert.equal(acordo?.gp, 10);
+  assert.equal(acordo?.versao, versaoDaCarteira, "a versão que a edge devolveu fica no ator");
+  assert.ok(!ator.ops.some((o) => o.op === "actor.update" && "flags" in o.dados), "as moedas do envio não viram flag cru do ator");
+
+  // 2) Envio novo, Foundry sem mudança: aplica as cinco moedas.
+  r = await comando({ request_id: "m2", action: "actor.update", actor_id: "ator4", payload: moedasDoEnvio(60, versaoDaCarteira + 1) });
+  assert.equal(r.data?.moedas, "aplicar");
+  assert.deepEqual(ator.system.currency, { pp: 1, gp: 60, ep: 0, sp: 2, cp: 3 });
+  assert.equal(ator.flags[MODULE_ID].moedas_sync.versao, versaoDaCarteira + 1);
+  const aplicacao = ator.ops.filter((o) => o.op === "actor.update").at(-1);
+  assert.equal(aplicacao.options?.companionBridge, true, "a aplicação leva a marca da ponte (anti-eco)");
+
+  // 3) Envio velho (versão já vista): ignora.
+  r = await comando({ request_id: "m3", action: "actor.update", actor_id: "ator4", payload: moedasDoEnvio(999, versaoDaCarteira) });
+  assert.equal(r.data?.moedas, "antigo");
+  assert.equal(ator.system.currency.gp, 60);
+
+  // 4) O Foundry mudou depois do acordo (e a volta ainda não chegou): o Foundry vence.
+  ator.system.currency.gp = 61;
+  const antes = enviosDeMoedas().length;
+  r = await comando({ request_id: "m4", action: "actor.update", actor_id: "ator4", payload: moedasDoEnvio(70, versaoDaCarteira + 10) });
+  assert.equal(r.data?.moedas, "foundry_vence");
+  assert.equal(ator.system.currency.gp, 61);
+  await espera(1200);
+  assert.equal(enviosDeMoedas().length, antes + 1);
+  assert.equal(enviosDeMoedas().at(-1).corpo.moedas.gp, 61);
+
+  // 5) Envio sem moedas (o Companion antigo): nada muda, a resposta não traz a chave.
+  r = await comando({ request_id: "m5", action: "actor.update", actor_id: "ator4", payload: {} });
+  assert.equal(r.ok, true);
+  assert.equal(r.data, undefined);
+});
+
+test("a ficha (actor.read, schema 2) leva as moedas e o inventário físico inteiro", async () => {
+  const ator = new FakeActor({
+    id: "ator5",
+    name: "Guldrum",
+    items: [
+      { _id: "i1", name: "Rope", type: "loot", system: { quantity: 2 }, flags: { [MODULE_ID]: { item_id: "c1" } } },
+      { _id: "i2", name: "Amulet", type: "equipment", system: { quantity: 1, equipped: true, attunement: "required", attuned: true } },
+      { _id: "i3", name: "Fire Bolt", type: "spell", system: {} },
+      { _id: "i4", name: "Unarmed Strike", type: "weapon", system: { type: { value: "natural" }, equipped: true } },
+    ],
+  });
+  ator.system = { currency: { pp: 0, gp: 7, ep: 1, sp: 0, cp: 9 } };
+  game.actors.set(ator.id, ator);
+  const r = await comando({ request_id: "l1", action: "actor.read", actor_id: "ator5" });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.data.schema, 2);
+  assert.deepEqual(r.data.moedas, { pp: 0, gp: 7, ep: 1, sp: 0, cp: 9 });
+  const nomes = r.data.inventario.map((i) => i.name).sort();
+  assert.deepEqual(nomes, ["Amulet", "Rope"], "magia e arma natural não são inventário");
+  const corda = r.data.inventario.find((i) => i.name === "Rope");
+  assert.equal(corda.companion_item_id, "c1");
+  assert.equal(corda.qty, 2);
+  assert.equal(corda.equipped, undefined, "loot não tem o campo equipado");
+  const amuleto = r.data.inventario.find((i) => i.name === "Amulet");
+  assert.equal(amuleto.companion_item_id, null);
+  assert.equal(amuleto.equipped, true);
+  assert.equal(amuleto.attuned, true);
+  assert.equal(amuleto.attunement, "required");
 });
 
 test("fim: desconecta (sem timers pendurados)", () => {
