@@ -221,7 +221,21 @@ function buildUpsertPayload(item, actor) {
     equipped: item.system?.equipped === true,
     // Sintonia (v1.8.0): o Foundry é a verdade. Campo que o item não tem não vai.
     ...camposDeSintonia(item),
+    // Raridade (v1.10.0): sem ela, o item nascido aqui chegava ao Companion
+    // sem raridade e não acendia a moldura de item mágico no boneco.
+    ...campoDeRaridade(item),
   };
+}
+
+/**
+ * `rarity` do dnd5e (`system.rarity`: "uncommon", "veryRare"…), só quando o
+ * item tem uma. Vazio é "sem raridade" no dnd5e e não vai: a edge não apaga o
+ * que o Companion tem. A edge passa para o formato do Companion ("Very Rare")
+ * e recusa o que não for uma das seis.
+ */
+export function campoDeRaridade(item) {
+  const r = item?.system?.rarity;
+  return typeof r === "string" && r.trim() ? { rarity: r.trim() } : {};
 }
 
 /** `attuned`/`attunement` do dnd5e, só quando o item tem o campo. */
