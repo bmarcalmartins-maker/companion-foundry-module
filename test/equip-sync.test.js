@@ -154,6 +154,19 @@ test("o upsert leva a sintonia quando o item tem o campo", async () => {
   assert.equal(upsert.attuned, true);
 });
 
+test("o upsert leva a raridade do item (v1.10.0); sem raridade, o campo não vai", async () => {
+  posts.length = 0;
+  const raro = new FakeItem("n3", ator, { type: "weapon", system: { rarity: "veryRare" } });
+  await dispara("createItem", raro, {});
+  assert.equal(posts.find((p) => p.op === "item.upsert").rarity, "veryRare");
+  posts.length = 0;
+  const mundano = new FakeItem("n4", ator, { type: "loot", system: { rarity: "" } });
+  await dispara("createItem", mundano, {});
+  const upsert = posts.find((p) => p.op === "item.upsert");
+  assert.ok(upsert, "o item mundano também vai");
+  assert.equal("rarity" in upsert, false);
+});
+
 test("reimportação (o item é recriado com o mesmo crachá): nem exclusão nem item novo", async () => {
   posts.length = 0;
   const velho = comCracha("r1", "cr1", { type: "loot" });

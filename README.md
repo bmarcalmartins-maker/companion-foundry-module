@@ -73,6 +73,16 @@ Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
   inteiro, para a conferência Companion × Foundry.
 - Detalhe: `docs/EQUIP-SYNC-FOUNDRY-COMPANION.md` §6.8.
 
+### Raridade do item novo — desde a 1.10.0 (12/10)
+
+- O item que nasce aqui (criado no ator, arrastado do compêndio) vai ao
+  Companion com a raridade (`system.rarity`, no `item.upsert`). Até a 1.9.0
+  chegava sem ela, e o boneco do inventário do jogador não acendia a moldura
+  de item mágico até o Mestre marcar a raridade à mão.
+- A edge `foundry-inbound` passa para o formato do Companion ("veryRare" →
+  "Very Rare") e só aceita as seis do dnd5e; item sem raridade não apaga a que
+  o Companion tem.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
