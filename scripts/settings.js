@@ -85,6 +85,17 @@ export function registerSettings() {
     default: true,
   });
 
+  // v1.11.0: os acertos e o dano dos personagens vão ao relatório do fim da
+  // sessão do Companion (combate-sync.js). Desligado, nada sai.
+  game.settings.register(MODULE_ID, "combateAoCompanion", {
+    name: "CFB.Settings.Combate.Name",
+    hint: "CFB.Settings.Combate.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
   game.settings.registerMenu(MODULE_ID, "statusMenu", {
     name: "CFB.Settings.StatusMenu.Name",
     label: "CFB.Settings.StatusMenu.Label",

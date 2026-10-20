@@ -4,6 +4,7 @@ import { registerEquipWatcher, syncActorInventory, resetActorLink } from "./equi
 import { listItems, listPacks } from "./compendium.js";
 import { registerLiveSync } from "./live-sync.js";
 import { registerMoedasSync } from "./moedas-sync.js";
+import { registerCombateSync } from "./combate-sync.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -74,4 +75,6 @@ Hooks.once("ready", async () => {
   registerLiveSync();
   // v1.9.0: as moedas, nos dois sentidos (moedas-sync.js).
   registerMoedasSync();
+  // v1.11.0: os acertos e o dano, para o relatório do fim da sessão (combate-sync.js).
+  registerCombateSync();
 });

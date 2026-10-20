@@ -9,6 +9,8 @@
   "CFB.Settings.InboundKey.Hint": "Secret sent as x-foundry-inbound-key. Must match the FOUNDRY_INBOUND_KEY secret on Supabase. Empty = Foundry→Companion sync disabled. Stored ONLY in this browser (only the GM needs it).",
   "CFB.Settings.AutoConnect.Name": "Auto-connect on startup",
   "CFB.Settings.AutoConnect.Hint": "Connect to the bridge automatically when the world loads (GM only).",
+  "CFB.Settings.Combate.Name": "Hits and damage to the Companion",
+  "CFB.Settings.Combate.Hint": "Sends the characters' attacks, rolled damage, damage taken and healing to the Companion, for the end-of-session report (only while a session is running there).",
   "CFB.Settings.StatusMenu.Name": "Connection Status",
   "CFB.Settings.StatusMenu.Label": "Open Status Panel",
   "CFB.Settings.StatusMenu.Hint": "View the bridge connection status, recent logs, and reconnect.",
