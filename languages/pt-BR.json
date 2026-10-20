@@ -26,5 +26,11 @@
   "CFB.Notify.Reconnecting": "Bridge do Companion reconectando em {seconds}s…",
   "CFB.Notify.NoApiKey": "Bridge do Companion: chave de API não configurada. Configure nas opções do módulo.",
   "CFB.Notify.ChavesMovidas": "Bridge do Companion: as chaves saíram da configuração do mundo (todo jogador as recebia) e agora ficam só NESTE navegador. Outro navegador de GM precisa digitá-las de novo nas opções do módulo.",
-  "CFB.Notify.Substituido": "Bridge do Companion: esta conexão foi substituída por outra janela de GM. Use \"Reconectar\" no status do módulo para retomar."
+  "CFB.Notify.Substituido": "Bridge do Companion: esta conexão foi substituída por outra janela de GM. Use \"Reconectar\" no status do módulo para retomar.",
+  "CFB.Magia.Titulo": "Magia falada",
+  "CFB.Magia.Pergunta": "Lançar {magia} em {alvo}?",
+  "CFB.Magia.SemAlvo": "nenhum alvo marcado",
+  "CFB.Magia.Ouvido": "Ouvido na mesa: “{falado}”",
+  "CFB.Magia.Lancar": "Lançar",
+  "CFB.Magia.AgoraNao": "Agora não"
 }

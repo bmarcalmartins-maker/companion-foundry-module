@@ -98,6 +98,29 @@ Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
   andamento no Companion, nada é gravado.
 - Liga e desliga: "Acertos e dano ao Companion" (configuração do mundo).
 
+### Magia falada — desde a 1.12.0 (20/10)
+
+- O jogador diz a magia na mesa. O Companion acha o nome entre as magias do
+  ator DELE e pede, pela ponte, a op `magia.pedir`. O nome do item vale, e
+  também os apelidos que o jogador grava no app ("como você fala").
+- **Quem recebe:**
+  - o **GM ativo** passa o pedido ao navegador do **jogador** dono do ator
+    (`User#query`, a pergunta `companion-foundry-bridge.lancarMagia`) e
+    responde na hora, sem esperar o toque;
+  - no **navegador do jogador**, se há combate, abre "Lançar X em <os alvos
+    que ele marcou>?". Só com o **"Lançar"** a magia é usada (`item.use()`), e
+    o diálogo do dnd5e abre quando há espaço ou escolha a fazer.
+- **Nunca lança sem o toque.** Um truque simples, no dnd5e 5.3.3, não abre
+  diálogo nenhum (`activity/mixin.mjs:225`, `:660-667`), por isso a pergunta é
+  do módulo. O Enter responde "Agora não".
+- **O resultado volta ao Companion** (`op: "magia.resultado"`): lançou,
+  recusou, sem combate, sem resposta.
+- O `actor.snapshot` leva as magias do ator: id, nome, nível, método e
+  preparação.
+- Liga e desliga: cada jogador, no app do Companion. É o único código deste
+  módulo que roda no navegador do jogador: o handler da pergunta, registrado no
+  `init` (`scripts/magia-falada.js`; regras em `scripts/magias.js`).
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -113,4 +136,5 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
 - `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0).
-- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js` — pure rules, tested in `test/`.
+- `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0).
+- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.

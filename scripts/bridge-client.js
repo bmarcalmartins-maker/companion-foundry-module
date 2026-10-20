@@ -8,6 +8,7 @@ import {
   reportCreatedEffects,
 } from "./equip-sync.js";
 import { readActor } from "./actor-read.js";
+import { pedirMagia } from "./magia-falada.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
 import { criarFila } from "./fila-por-ator.js";
 import { aplicarMoedasDoCompanion } from "./moedas-sync.js";
@@ -257,6 +258,12 @@ export class BridgeClient {
           break;
         case "compendium.items":
           result = { data: await listItems(params ?? {}) };
+          break;
+        // v1.12.0: a magia falada. Passa o pedido ao jogador dono do ator e
+        // responde na hora (entregue ou não); o toque dele volta depois, pela
+        // entrada (op magia.resultado). Fora da fila do ator: não mexe nele.
+        case "magia.pedir":
+          result = pedirMagia({ actor_id, payload });
           break;
         default:
           throw new Error(`unknown action: ${action}`);

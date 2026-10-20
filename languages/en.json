@@ -26,5 +26,11 @@
   "CFB.Notify.Reconnecting": "Companion bridge reconnecting in {seconds}s…",
   "CFB.Notify.NoApiKey": "Companion bridge: no API key set. Configure it in the module settings.",
   "CFB.Notify.ChavesMovidas": "Companion bridge: the keys were moved out of the world settings (every player received them) into THIS browser. Another GM browser must enter them again in the module settings.",
-  "CFB.Notify.Substituido": "Companion bridge: this connection was replaced by another GM window. Use \"Reconnect\" in the module status to take it back."
+  "CFB.Notify.Substituido": "Companion bridge: this connection was replaced by another GM window. Use \"Reconnect\" in the module status to take it back.",
+  "CFB.Magia.Titulo": "Spoken spell",
+  "CFB.Magia.Pergunta": "Cast {magia} on {alvo}?",
+  "CFB.Magia.SemAlvo": "no target selected",
+  "CFB.Magia.Ouvido": "Heard at the table: “{falado}”",
+  "CFB.Magia.Lancar": "Cast",
+  "CFB.Magia.AgoraNao": "Not now"
 }
