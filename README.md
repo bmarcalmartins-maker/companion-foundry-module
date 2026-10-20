@@ -83,6 +83,21 @@ Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
   "Very Rare") e só aceita as seis do dnd5e; item sem raridade não apaga a que
   o Companion tem.
 
+### Acertos e dano — desde a 1.11.0 (20/10)
+
+- Para o relatório do fim da sessão do Companion, o GM ativo manda de cada
+  personagem (`scripts/combate-sync.js`, regras em `scripts/combate.js`):
+  - o **ataque** (a mensagem de rolagem de ataque do dnd5e): crítico e falha
+    sempre; o acerto só com UM alvo marcado, porque o dnd5e põe a CA na
+    rolagem só nesse caso;
+  - o **dano rolado** e a **cura rolada** (as mensagens de dano e de cura);
+  - o **dano tomado** (o gancho `dnd5e.damageActor`: PV perdidos, menos
+    descanso e avanço).
+- Vai na op `combate.evento` da `foundry-inbound`, agrupado por 2 s (até 50 por
+  pedido), com um id por evento: o reenvio não duplica. Sem sessão em
+  andamento no Companion, nada é gravado.
+- Liga e desliga: "Acertos e dano ao Companion" (configuração do mundo).
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -97,4 +112,5 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
-- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js` — pure rules, tested in `test/`.
+- `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0).
+- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js` — pure rules, tested in `test/`.
