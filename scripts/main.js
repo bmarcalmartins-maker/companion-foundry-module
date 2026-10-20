@@ -5,9 +5,13 @@ import { listItems, listPacks } from "./compendium.js";
 import { registerLiveSync } from "./live-sync.js";
 import { registerMoedasSync } from "./moedas-sync.js";
 import { registerCombateSync } from "./combate-sync.js";
+import { registerMagiaFalada } from "./magia-falada.js";
 
 Hooks.once("init", () => {
   registerSettings();
+  // v1.12.0: a magia falada. Em TODO navegador (o do jogador também): é o
+  // handler da pergunta que o GM manda ao dono do ator (magia-falada.js).
+  registerMagiaFalada();
   console.log(`${MODULE_ID} | initialized`);
 });
 
