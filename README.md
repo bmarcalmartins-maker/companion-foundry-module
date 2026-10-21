@@ -121,6 +121,21 @@ Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
   módulo que roda no navegador do jogador: o handler da pergunta, registrado no
   `init` (`scripts/magia-falada.js`; regras em `scripts/magias.js`).
 
+### Ações, atalhos e sem trava de combate — desde a 1.13.0 (21/10)
+
+- O `actor.snapshot` leva também as **ações** do ator (`acoes`): armas,
+  habilidades e consumíveis com algo a usar no dnd5e (`system.activities`
+  com pelo menos uma). Habilidade passiva e arma sem atividade ficam de fora.
+- O pedido pode ser um **atalho** do jogador (`tipo: "atalho"`, `itens`, até
+  5): a pergunta é UMA ("Usar Bless, depois Guiding Bolt em …?"), e os itens
+  são usados em ordem. Se ele cancelar um no diálogo do dnd5e, os seguintes
+  não são usados, e o Companion recebe "recusou".
+- "Lançar" quando é uma magia só; "Usar" no resto.
+- **Sem trava de combate** (decisão do Bruno): quem decide é a fala que o
+  jogador configurou no app (só o nome, uma palavra antes, os apelidos, os
+  atalhos). A pergunta continua: nada é usado sem o toque.
+- O pedido de antes (só `item_id`) vale como antes.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -136,5 +151,5 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
 - `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0).
-- `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0).
+- `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).
 - `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.

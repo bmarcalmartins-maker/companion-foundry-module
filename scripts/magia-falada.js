@@ -1,6 +1,6 @@
 import { MODULE_ID } from "./settings.js";
 import { postInbound } from "./equip-sync.js";
-import { QUERY_LANCAR_MAGIA, lancarMagiaNoJogador, pedirMagiaAoJogador, textoDaPergunta } from "./magias.js";
+import { QUERY_LANCAR_MAGIA, eLancar, lancarMagiaNoJogador, pedirMagiaAoJogador, textoDaPergunta } from "./magias.js";
 
 /**
  * A MAGIA FALADA ligada ao Foundry (v1.12.0; as regras em magias.js).
@@ -18,13 +18,13 @@ import { QUERY_LANCAR_MAGIA, lancarMagiaNoJogador, pedirMagiaAoJogador, textoDaP
 
 const t = (k) => game.i18n.localize(k);
 
-/** "Lançar X em Y?": true só com o "Lançar". O padrão do Enter é o "Agora não". */
-async function confirmarNoFoundry({ magia, alvos, falado }) {
+/** "Lançar X em Y?" ou "Usar X, depois Z?": true só com o "Lançar"/"Usar". O padrão do Enter é o "Agora não". */
+async function confirmarNoFoundry({ itens, alvos, falado }) {
   const { DialogV2 } = foundry.applications.api;
   return DialogV2.confirm({
     window: { title: t("CFB.Magia.Titulo"), icon: "fa-solid fa-wand-sparkles" },
-    content: textoDaPergunta({ magia, alvos, falado }, t),
-    yes: { label: t("CFB.Magia.Lancar"), icon: "fa-solid fa-wand-sparkles", default: false },
+    content: textoDaPergunta({ itens, alvos, falado }, t),
+    yes: { label: t(eLancar(itens) ? "CFB.Magia.Lancar" : "CFB.Magia.Usar"), icon: "fa-solid fa-wand-sparkles", default: false },
     no: { label: t("CFB.Magia.AgoraNao"), default: true },
     rejectClose: false,
   });

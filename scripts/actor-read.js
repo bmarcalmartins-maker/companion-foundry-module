@@ -31,7 +31,7 @@
 import { efeitoEnxuto } from "./effect-shape.js";
 import { camposDeSintonia, getCompanionItemId, isSyncableItem } from "./equip-sync.js";
 import { moedasValidas } from "./moedas.js";
-import { magiasDoAtor } from "./magias.js";
+import { acoesDoAtor, magiasDoAtor } from "./magias.js";
 
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -125,5 +125,7 @@ export function readActor(actorId, moduleId) {
     inventario,
     // v1.12.0: as magias do ator, para o Companion casar o nome falado com elas
     magias: magiasDoAtor(actor.items),
+    // v1.13.0: as ações (armas, habilidades e consumíveis com algo a usar)
+    acoes: acoesDoAtor(actor.items),
   };
 }

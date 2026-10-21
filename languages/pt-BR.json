@@ -32,5 +32,8 @@
   "CFB.Magia.SemAlvo": "nenhum alvo marcado",
   "CFB.Magia.Ouvido": "Ouvido na mesa: “{falado}”",
   "CFB.Magia.Lancar": "Lançar",
-  "CFB.Magia.AgoraNao": "Agora não"
+  "CFB.Magia.AgoraNao": "Agora não",
+  "CFB.Magia.PerguntaUsar": "Usar {magia} em {alvo}?",
+  "CFB.Magia.Usar": "Usar",
+  "CFB.Magia.Depois": ", depois "
 }

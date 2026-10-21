@@ -32,5 +32,8 @@
   "CFB.Magia.SemAlvo": "no target selected",
   "CFB.Magia.Ouvido": "Heard at the table: “{falado}”",
   "CFB.Magia.Lancar": "Cast",
-  "CFB.Magia.AgoraNao": "Not now"
+  "CFB.Magia.AgoraNao": "Not now",
+  "CFB.Magia.PerguntaUsar": "Use {magia} on {alvo}?",
+  "CFB.Magia.Usar": "Use",
+  "CFB.Magia.Depois": ", then "
 }
