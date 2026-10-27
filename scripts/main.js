@@ -8,6 +8,7 @@ import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 import { auditar } from "./auditoria-foundry.js";
+import { aplicarCanonico, desfazerCanonico } from "./canonico-foundry.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -67,11 +68,21 @@ Hooks.once("ready", async () => {
     // v1.15.0: a AUDITORIA Foundry × canônico (só leitura; auditoria-foundry.js):
     //   const r = await game.modules.get("companion-foundry-bridge").api.auditar({ baixar: true });
     auditar: (opcoes) => auditar(opcoes ?? {}),
+    // v1.16.0: as correções canônicas (canonico-foundry.js). Rodam sozinhas no
+    // ready do GM ativo; à mão: aplicarCanonico({ simular: true }) diz o que faria.
+    aplicarCanonico: (opcoes) => aplicarCanonico(opcoes ?? {}),
+    desfazerCanonico: () => desfazerCanonico(),
   };
 
   // Só o GM ATIVO conecta. Com dois GMs (ou duas janelas), cada um abria o
   // seu socket; a ponte agora fica só com o mais novo e fecha o outro.
   if (game.settings.get(MODULE_ID, "autoConnect") && souOGmAtivo()) client.connect();
+  // v1.16.0 (Bruno, 27/10: "já aplica tudo"): o GM ativo deixa as habilidades
+  // decididas iguais ao oficial e completa as escalas que faltam. Idempotente;
+  // o "antes" fica na flag do item (api.desfazerCanonico()).
+  if (souOGmAtivo()) {
+    aplicarCanonico().catch((err) => console.error(`${MODULE_ID} | correções canônicas falharam`, err));
+  }
   // O GM ativo muda quando um GM entra ou sai: quem virou ativo conecta, quem
   // deixou de ser desconecta.
   Hooks.on("userConnected", () => {
