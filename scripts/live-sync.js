@@ -1,5 +1,6 @@
 import { MODULE_ID } from "./settings.js";
 import { readActor } from "./actor-read.js";
+import { encolherFicha } from "./ficha-completa.js";
 import { getCompanionItemId, isReportingGm, postInbound, reportItemEffects } from "./equip-sync.js";
 
 /**
@@ -75,6 +76,13 @@ async function enviarFicha(actorId) {
   } catch (err) {
     console.warn(`${MODULE_ID} | não consegui ler a ficha de "${actor.name}":`, err);
     return null;
+  }
+  // v1.15.0: a ficha completa pode passar do teto; corta as habilidades em
+  // degraus, AVISANDO (ficha-completa.js). Os efeitos que valem no ator ficam.
+  {
+    const { snapshot: menor, cortes } = encolherFicha(snapshot, MAX_SNAPSHOT_JSON);
+    if (cortes.length) console.warn(`${MODULE_ID} | ficha de "${actor.name}" grande demais — enviada sem: ${cortes.join("; ")}`);
+    snapshot = menor;
   }
   // Rede de segurança: grande demais, vai sem os efeitos dos equipados (os
   // números calculados, que são o que o painel mostra, continuam inteiros).

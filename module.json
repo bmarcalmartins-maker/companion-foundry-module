@@ -2,7 +2,7 @@
   "id": "companion-foundry-bridge",
   "title": "Companion Foundry Bridge",
   "description": "Bridges the Companion app and Foundry VTT: actors, inventory, equipment, currency and the computed sheet, both ways, in real time.",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "compatibility": {
     "minimum": "13",
     "verified": "14",

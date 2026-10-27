@@ -7,6 +7,7 @@ import { registerMoedasSync } from "./moedas-sync.js";
 import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
+import { auditar } from "./auditoria-foundry.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -63,6 +64,9 @@ Hooks.once("ready", async () => {
     //   await api.compendiumItems({ packs: ["dnd5e.items"], offset: 0, limit: 5 });
     compendiumPacks: () => listPacks(),
     compendiumItems: (query) => listItems(query ?? {}),
+    // v1.15.0: a AUDITORIA Foundry × canônico (só leitura; auditoria-foundry.js):
+    //   const r = await game.modules.get("companion-foundry-bridge").api.auditar({ baixar: true });
+    auditar: (opcoes) => auditar(opcoes ?? {}),
   };
 
   // Só o GM ATIVO conecta. Com dois GMs (ou duas janelas), cada um abria o
