@@ -8,7 +8,7 @@ import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 import { auditar } from "./auditoria-foundry.js";
-import { aplicarCanonico, desfazerCanonico } from "./canonico-foundry.js";
+import { agendarCanonico, aplicarCanonico, desfazerCanonico } from "./canonico-foundry.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -83,6 +83,14 @@ Hooks.once("ready", async () => {
   if (souOGmAtivo()) {
     aplicarCanonico().catch((err) => console.error(`${MODULE_ID} | correções canônicas falharam`, err));
   }
+  // v1.17.0: item ou efeito novo num personagem (importação do D&D Beyond,
+  // loja, Companion) passa pelas mesmas correções, em lote (agendarCanonico).
+  const emPersonagem = (doc) => {
+    const ator = doc?.parent instanceof Actor ? doc.parent : doc?.parent?.parent;
+    return ator instanceof Actor && ["character", "npc"].includes(ator.type);
+  };
+  Hooks.on("createItem", (item) => { if (souOGmAtivo() && emPersonagem(item)) agendarCanonico(); });
+  Hooks.on("createActiveEffect", (ef) => { if (souOGmAtivo() && emPersonagem(ef)) agendarCanonico(); });
   // O GM ativo muda quando um GM entra ou sai: quem virou ativo conecta, quem
   // deixou de ser desconecta.
   Hooks.on("userConnected", () => {
