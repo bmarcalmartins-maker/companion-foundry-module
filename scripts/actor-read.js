@@ -21,6 +21,10 @@
  * Regra: só vai NÚMERO. Campo que não existir ou não for número é OMITIDO —
  * a tela do Companion mostra "—", nunca um valor inventado.
  *
+ * v1.15.0 (schema 3): `deslocamento`, `efeitos` (todos os que podem valer no
+ * ator) e `habilidades` (classe, raça, talentos, magias, com os efeitos) —
+ * ficha-completa.js.
+ *
  * v1.9.0 (schema 2): também `moedas` (system.currency, as cinco) e
  * `inventario` — TODOS os itens físicos (os mesmos que a volta manda ao
  * Companion: isSyncableItem), com quantidade, equipado e sintonia. É o que a
@@ -32,6 +36,53 @@ import { efeitoEnxuto } from "./effect-shape.js";
 import { camposDeSintonia, getCompanionItemId, isSyncableItem } from "./equip-sync.js";
 import { moedasValidas } from "./moedas.js";
 import { acoesDoAtor, magiasDoAtor } from "./magias.js";
+import { deslocamentoDe, efeitosDaFicha, habilidadesDoAtor } from "./ficha-completa.js";
+
+/** Todo efeito que pode valer no ator (os do ator e os que passam dos itens). */
+function efeitosQuePodemValer(actor) {
+  if (typeof actor.allApplicableEffects === "function") return Array.from(actor.allApplicableEffects());
+  const out = Array.from(actor.effects ?? []);
+  for (const i of actor.items ?? []) for (const e of i.effects ?? []) if (e.transfer) out.push(e);
+  return out;
+}
+
+/**
+ * O valor de uma fórmula de efeito nos dados do ATOR, como o dnd5e faz no
+ * preparo (utils.mjs:369-376: replaceFormulaData + Roll determinístico).
+ * Referência ausente ou dado na fórmula: undefined (o Companion mostra o texto).
+ */
+function resolvedorDoAtor(actor) {
+  let dados = null;
+  return (formula) => {
+    try {
+      dados ??= actor.getRollData({ deterministic: true });
+      // A troca do dnd5e (utils.mjs:399-410), sem pôr "0" no que falta.
+      let falta = false;
+      const trocada = String(formula).replace(/@([a-z.0-9_-]+)/gi, (_, termo) => {
+        const v = foundry.utils.getProperty(dados, termo);
+        if (v == null) falta = true;
+        return String(v ?? "").trim();
+      });
+      if (falta) return undefined;
+      const roll = new Roll(trocada);
+      if (!roll.isDeterministic) return undefined;
+      const total = roll.evaluateSync().total;
+      return typeof total === "number" && Number.isFinite(total) ? total : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+/** O nome do documento de origem de um efeito do ator (a magia que o pôs), sem buscar no servidor. */
+function nomeDaOrigem(uuid) {
+  try {
+    const f = globalThis.fromUuidSync ?? foundry.utils.fromUuidSync;
+    return f?.(uuid, { strict: false })?.name ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -89,7 +140,7 @@ export function readActor(actorId, moduleId) {
   }));
 
   return {
-    schema: 2,
+    schema: 3,
     actor_id: actor.id,
     name: actor.name,
     system_version: game.system?.version ?? null,
@@ -127,5 +178,11 @@ export function readActor(actorId, moduleId) {
     magias: magiasDoAtor(actor.items),
     // v1.13.0: as ações (armas, habilidades e consumíveis com algo a usar)
     acoes: acoesDoAtor(actor.items),
+    // v1.15.0 (schema 3): a ficha completa (ficha-completa.js) — o
+    // deslocamento preparado, todo efeito que pode valer no ator (com o
+    // veredito ativo/suprimido) e as habilidades com todos os efeitos.
+    deslocamento: deslocamentoDe(attrs.movement),
+    efeitos: efeitosDaFicha(efeitosQuePodemValer(actor), nomeDaOrigem, resolvedorDoAtor(actor)),
+    habilidades: habilidadesDoAtor(actor.items),
   };
 }

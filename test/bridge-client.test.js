@@ -351,7 +351,7 @@ test("moedas (v1.9.0): primeiro contato e Foundry que mudou vencem; envio novo a
   assert.equal(r.data, undefined);
 });
 
-test("a ficha (actor.read, schema 2) leva as moedas e o inventário físico inteiro", async () => {
+test("a ficha (actor.read, schema 3) leva as moedas, o inventário físico inteiro e as habilidades", async () => {
   const ator = new FakeActor({
     id: "ator5",
     name: "Guldrum",
@@ -366,7 +366,7 @@ test("a ficha (actor.read, schema 2) leva as moedas e o inventário físico inte
   game.actors.set(ator.id, ator);
   const r = await comando({ request_id: "l1", action: "actor.read", actor_id: "ator5" });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.equal(r.data.schema, 2);
+  assert.equal(r.data.schema, 3);
   assert.deepEqual(r.data.moedas, { pp: 0, gp: 7, ep: 1, sp: 0, cp: 9 });
   const nomes = r.data.inventario.map((i) => i.name).sort();
   assert.deepEqual(nomes, ["Amulet", "Rope"], "magia e arma natural não são inventário");
@@ -379,6 +379,9 @@ test("a ficha (actor.read, schema 2) leva as moedas e o inventário físico inte
   assert.equal(amuleto.equipped, true);
   assert.equal(amuleto.attuned, true);
   assert.equal(amuleto.attunement, "required");
+  // v1.15.0: as habilidades (aqui, a magia) e a lista de efeitos (vazia neste ator).
+  assert.deepEqual(r.data.habilidades.map((h) => h.name), ["Fire Bolt"]);
+  assert.deepEqual(r.data.efeitos, []);
 });
 
 test("fim: desconecta (sem timers pendurados)", () => {
