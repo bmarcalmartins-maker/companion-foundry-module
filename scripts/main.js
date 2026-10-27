@@ -6,9 +6,16 @@ import { registerLiveSync } from "./live-sync.js";
 import { registerMoedasSync } from "./moedas-sync.js";
 import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
+import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 
 Hooks.once("init", () => {
   registerSettings();
+  // v1.14.0: bônus de cura do D&D Beyond (Disciple of Life) como fórmula e
+  // com a regra canônica na rolagem, em TODO navegador, antes de qualquer
+  // ficha ser preparada (efeitos-dnd5e.js). O init do dnd5e roda antes deste
+  // (o sistema carrega antes dos módulos) e já trocou
+  // CONFIG.ActiveEffect.documentClass por ActiveEffect5e (dnd5e.mjs:73).
+  registrarRegrasDeCura(CONFIG.ActiveEffect?.documentClass ?? globalThis.dnd5e?.documents?.ActiveEffect5e, Hooks);
   // v1.12.0: a magia falada. Em TODO navegador (o do jogador também): é o
   // handler da pergunta que o GM manda ao dono do ator (magia-falada.js).
   registerMagiaFalada();
