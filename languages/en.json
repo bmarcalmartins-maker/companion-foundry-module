@@ -35,5 +35,7 @@
   "CFB.Magia.AgoraNao": "Not now",
   "CFB.Magia.PerguntaUsar": "Use {magia} on {alvo}?",
   "CFB.Magia.Usar": "Use",
-  "CFB.Magia.Depois": ", then "
+  "CFB.Magia.Depois": ", then ",
+  "CFB.Settings.PastaDasTrilhas.Name": "Companion tracks folder",
+  "CFB.Settings.PastaDasTrilhas.Hint": "The folder (inside Data) holding the files of the Companion sound library. Each track path is relative to it: \"mesa/tumba.mp3\" plays \"sounds/mesa/tumba.mp3\"."
 }

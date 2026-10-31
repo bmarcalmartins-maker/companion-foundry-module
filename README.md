@@ -161,6 +161,32 @@ um nome de fachada). No dnd5e 5.3 isso é `system.identified` e
   quem não é GM. O nome já é a fachada (o nome preparado).
 - Com o Companion de antes (sem a flag), nada muda.
 
+### Música do Companion — desde a 1.19.0 (31/10)
+
+O Companion pede uma trilha da biblioteca de sons dele (o painel Música, o som
+da cena, o chat da Mesa) e o Foundry toca para todos.
+
+- **O cano:** o Companion → a ponte (`POST /audio`, op `audio.comando`) → o
+  GM ATIVO responde "recebido" na hora e muda a playlist **"Companion —
+  Trilhas"** (criada sozinha na primeira vez: modo soundboard, canal música,
+  marcada pela flag `trilhas`). O Foundry toca para todos os navegadores a
+  partir do estado da playlist; cada jogador ouve no volume de música dele.
+- **Comandos:** tocar (volume 0 a 1, em loop ou uma vez, fade em ms; "cruzar"
+  tira as outras do Companion com o mesmo fade, "somar" toca por cima), parar
+  uma ou todas, o volume de uma, e o que toca agora. Cada faixa é UM som da
+  playlist (flag `faixa_id`, o id na biblioteca do Companion): pedir de novo
+  reusa. Um comando por vez, na ordem.
+- **O arquivo:** o caminho da biblioteca é relativo à **Pasta das trilhas do
+  Companion** (configuração do mundo; padrão `sounds`, dentro de Data). Antes
+  de tocar, o módulo lista a pasta (`FilePicker.browse`): arquivo que não está
+  lá não toca e o Companion lê `arquivo_nao_achado: <caminho>`. Sem permissão
+  de listar, toca assim mesmo.
+- **A volta:** depois de cada comando, e a cada mudança na playlist feita
+  aqui (o GM tocou ou parou, a faixa acabou), o que toca agora vai à entrada
+  do Companion (`op: "trilha.resultado"`). Ao abrir o mundo, também.
+- O GM pode mexer na playlist à mão como em qualquer outra; o Companion
+  acompanha.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -171,6 +197,7 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 
 - `scripts/main.js` — hooks: register settings, connect on ready (GM).
 - `scripts/bridge-client.js` — WebSocket client (reconnect, heartbeat, actor handlers).
+- `scripts/trilhas.js` / `scripts/trilhas-foundry.js` — a música do Companion (1.19.0).
 - `scripts/status-app.js` — connection-status panel (ApplicationV2).
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
