@@ -99,10 +99,11 @@ export function registerCombateSync() {
     if (r) guardar(r.actorId, r.evento);
   });
 
-  // v1.21.0 (TRANCHE R, a trilha pelo clima): o combate começou ou acabou.
-  // Só o GM ativo manda; a mesma configuração liga e desliga.
+  // v1.21.0 (TRANCHE R, a trilha pelo clima): o combate começou ou acabou,
+  // pela edge foundry-combate (a mesma chave de entrada; a URL é a da entrada
+  // com o nome trocado). Só o GM ativo manda; a mesma configuração liga e desliga.
   const vigia = criarVigiaDoCombate({
-    enviar: (corpo) => postInbound(corpo, { silencioso404: true }),
+    enviar: (corpo) => postInbound(corpo, { silencioso404: true, rota: "foundry-combate" }),
     esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
   });
   vigia.conhecer(game.combats?.contents ?? []);

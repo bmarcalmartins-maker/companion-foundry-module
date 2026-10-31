@@ -64,3 +64,11 @@ test("a decisão depois do envio", () => {
   assert.equal(depoisDoEnvioDoEstado({ ok: false, status: 429 }), "repete");
   assert.equal(depoisDoEnvioDoEstado(null), "repete");
 });
+
+test("a URL da edge foundry-combate sai da URL da entrada", async () => {
+  const { urlDaRota } = await import("../scripts/rotas.js");
+  assert.equal(urlDaRota("https://x.supabase.co/functions/v1/foundry-inbound", "foundry-combate"), "https://x.supabase.co/functions/v1/foundry-combate");
+  assert.equal(urlDaRota("https://x.supabase.co/functions/v1/foundry-inbound/", "foundry-combate"), "https://x.supabase.co/functions/v1/foundry-combate");
+  assert.equal(urlDaRota("https://outro/lugar", "foundry-combate"), null);
+  assert.equal(urlDaRota("", "foundry-combate"), null);
+});

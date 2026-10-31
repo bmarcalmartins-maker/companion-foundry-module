@@ -225,9 +225,9 @@ quem decide é o banco do Companion).
   gancho `updateCombat` (dispara em todo navegador depois da gravação).
   **Acabou:** o combate começado foi apagado (o "Encerrar combate" apaga o
   encontro: `deleteCombat`) ou voltou a não ter rodada.
-- Só o GM ativo manda, `op: "combate.estado"` (`combate_id`, `fase`
-  `inicio`/`fim`), uma vez por fato, com 3 tentativas se a entrada não
-  responde. A configuração "Acertos e dano ao Companion" liga e desliga junto.
+- Só o GM ativo manda, à edge `foundry-combate` (a URL da entrada com o nome
+  trocado; a mesma chave), `combate_id` e `fase` (`inicio`/`fim`), uma vez
+  por fato, com 3 tentativas se ela não responde. A configuração "Acertos e dano ao Companion" liga e desliga junto.
 - Ao abrir o mundo, o combate já começado entra como conhecido, sem mandar
   nada.
 - Sem sessão em andamento no Companion, a entrada não faz nada.

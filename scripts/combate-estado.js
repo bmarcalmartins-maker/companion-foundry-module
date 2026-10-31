@@ -5,7 +5,7 @@
  *
  * O Companion troca a música para uma de combate NA HORA quando o combate
  * começa, e volta ao clima 1 min depois que ele acaba (quem decide é o banco,
- * trilha_combate). Daqui sai só o fato:
+ * trilha_combate). Daqui sai só o fato, para a edge foundry-combate:
  *   { op: "combate.estado", combate_id, fase: "inicio" | "fim" }
  *
  * - "Começou" = o combate passou a ter rodada (Combat#started, round > 0),
