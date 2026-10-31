@@ -187,6 +187,34 @@ da cena, o chat da Mesa) e o Foundry toca para todos.
 - O GM pode mexer na playlist à mão como em qualquer outra; o Companion
   acompanha.
 
+### O acervo grande — desde a 1.20.0 (31/10)
+
+O Mestre aperta **"Importar a pasta do Foundry"** no painel Música do Companion
+e a biblioteca dele passa a conhecer TODO arquivo de áudio da Pasta das trilhas
+(as pastas de dentro também). Os arquivos ficam aqui; o Companion guarda o
+caminho.
+
+- **O pedido** chega pelo mesmo cano (`audio.comando`, ação `listar`) e corre
+  FORA da fila da música: importar milhares de arquivos não segura o "tocar".
+  Uma importação por vez.
+- **Listar:** pasta por pasta (`FilePicker.browse("data", pasta, { extensions })`,
+  só as extensões de áudio do Foundry). A pasta que não abre vai junto como
+  falha: o Companion não marca nada como "sumiu" quando a lista não está inteira.
+- **Mandar:** em lotes de até 400 arquivos e 90 KB (a entrada recusa acima de
+  128 KiB), `op: "trilha.acervo"`, com 3 tentativas quando a entrada não
+  responde. O Companion etiqueta (as palavras, os temas em português, o tipo,
+  os climas sugeridos), cadastra o que é novo e não mexe no que o Mestre editou.
+- **A duração:** a resposta de cada lote diz quais arquivos ainda não têm
+  duração no Companion; só esses são medidos (um `<audio>` que lê o cabeçalho,
+  6 de cada vez, até 4 s cada) e vão em `op: "trilha.duracoes"`. Reimportar não
+  mede de novo.
+- O GM vê no Foundry o aviso do começo e do fim ("Companion: 1.204 arquivos
+  importados").
+- Medido nos testes (Foundry simulado, `test/acervo.test.js`): 5.000 arquivos em
+  56 pastas, 13 lotes, cerca de 1,2 s com a listagem simulada a 2 ms por pasta e
+  a duração a 1 ms por arquivo. O tempo do Foundry de verdade depende do disco e
+  da rede do PC (HIPÓTESE até o teste do Bruno).
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -198,6 +226,7 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/main.js` — hooks: register settings, connect on ready (GM).
 - `scripts/bridge-client.js` — WebSocket client (reconnect, heartbeat, actor handlers).
 - `scripts/trilhas.js` / `scripts/trilhas-foundry.js` — a música do Companion (1.19.0).
+- `scripts/acervo.js` — a importação da pasta das trilhas (1.20.0).
 - `scripts/status-app.js` — connection-status panel (ApplicationV2).
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).

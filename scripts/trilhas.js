@@ -20,6 +20,8 @@
  *   "somar": toca por cima.
  * - A ponte espera a resposta: o comando responde "recebido" na hora e o
  *   trabalho segue numa fila (um comando por vez, na ordem em que chegaram).
+ * - "listar" (1.20.0): a importação da pasta das trilhas (acervo.js), fora da
+ *   fila; a lista volta em lotes (op trilha.acervo).
  *
  * FATO (os tipos da comunidade para a v14, @league-of-foundry-developers/
  * foundry-vtt-types 14.369 beta, 27/10): PlaylistSound tem name, path,
@@ -38,7 +40,7 @@ export const MODO_SOUNDBOARD = -1;
 export const CANAL = "music";
 export const PASTA_PADRAO = "sounds";
 
-const ACOES = new Set(["tocar", "parar", "volume", "estado"]);
+const ACOES = new Set(["tocar", "parar", "volume", "estado", "listar"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -69,9 +71,11 @@ export function validarComando(p) {
   const faixaId = typeof p.faixa_id === "string" && UUID.test(p.faixa_id) ? p.faixa_id.toLowerCase() : null;
   const caminho = typeof p.caminho === "string" && p.caminho.trim() ? p.caminho.trim() : null;
   if ((acao === "tocar" || acao === "volume") && (!faixaId || !caminho)) throw new Error("faixa_sem_id_ou_arquivo");
+  const pedidoId = typeof p.pedido_id === "string" && UUID.test(p.pedido_id) ? p.pedido_id.toLowerCase() : null;
+  if (acao === "listar" && !pedidoId) throw new Error("importacao_sem_pedido");
   return {
     acao,
-    pedidoId: typeof p.pedido_id === "string" && UUID.test(p.pedido_id) ? p.pedido_id.toLowerCase() : null,
+    pedidoId,
     faixaId,
     nome: typeof p.nome === "string" && p.nome.trim() ? p.nome.trim().slice(0, 200) : "Trilha",
     caminho,
@@ -138,7 +142,8 @@ export function planoDoComando(cmd, sons, caminhoCompleto) {
  *   moduleId; playlists (game.playlists: tem find); criarPlaylist(dados);
  *   pasta() (a pasta das trilhas); existe(caminho) (o arquivo existe? lança
  *   ou devolve null quando não dá para saber); reportar(corpo) (POST na
- *   entrada; o resultado não é esperado).
+ *   entrada; o resultado não é esperado); acervo (criarAcervo, 1.20.0: a
+ *   importação da pasta, que corre fora da fila da música).
  */
 export function criarMusica(deps) {
   const { moduleId } = deps;
@@ -212,6 +217,14 @@ export function criarMusica(deps) {
       const pedidoId = typeof payload?.pedido_id === "string" && UUID.test(payload.pedido_id) ? payload.pedido_id.toLowerCase() : null;
       relatar({ pedido_id: pedidoId, ok: false, motivo: err?.message ?? String(err), tocando: [] });
       return { recebido: false, motivo: err?.message ?? String(err) };
+    }
+    // A importação da pasta (1.20.0) corre FORA da fila: listar milhares de
+    // arquivos não segura o "tocar" de ninguém. O resultado volta em lotes
+    // (op trilha.acervo), não pelo trilha.resultado.
+    if (cmd.acao === "listar") {
+      if (!deps.acervo) return { recebido: false, motivo: "acao_desconhecida: listar" };
+      void deps.acervo.comecar(cmd.pedidoId);
+      return { recebido: true };
     }
     fila = fila
       .then(async () => {
