@@ -215,6 +215,23 @@ caminho.
   a duração a 1 ms por arquivo. O tempo do Foundry de verdade depende do disco e
   da rede do PC (HIPÓTESE até o teste do Bruno).
 
+### O combate começou ou acabou — desde a 1.21.0 (31/10)
+
+Para a **trilha pelo clima** do Companion (a música troca para uma de combate
+NA HORA quando o combate começa e volta ao clima 1 min depois que ele acaba;
+quem decide é o banco do Companion).
+
+- **Começou:** o combate passou a ter rodada (`Combat#started`), visto no
+  gancho `updateCombat` (dispara em todo navegador depois da gravação).
+  **Acabou:** o combate começado foi apagado (o "Encerrar combate" apaga o
+  encontro: `deleteCombat`) ou voltou a não ter rodada.
+- Só o GM ativo manda, `op: "combate.estado"` (`combate_id`, `fase`
+  `inicio`/`fim`), uma vez por fato, com 3 tentativas se a entrada não
+  responde. A configuração "Acertos e dano ao Companion" liga e desliga junto.
+- Ao abrir o mundo, o combate já começado entra como conhecido, sem mandar
+  nada.
+- Sem sessão em andamento no Companion, a entrada não faz nada.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -231,6 +248,6 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
-- `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0).
+- `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`).
 - `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).
 - `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.
