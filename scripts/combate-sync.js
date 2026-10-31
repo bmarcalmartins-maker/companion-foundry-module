@@ -1,6 +1,6 @@
 import { MODULE_ID } from "./settings.js";
 import { isReportingGm, postInbound } from "./equip-sync.js";
-import { depoisDoEnvio, enfileirar, eventoDaMensagem, eventoDaVida } from "./combate.js";
+import { depoisDoEnvio, enfileirar, eventoDaMensagem, eventoDaVida, testeDaMensagem } from "./combate.js";
 import { criarVigiaDoCombate } from "./combate-estado.js";
 
 /**
@@ -84,6 +84,13 @@ async function enviar(actorId) {
   }
 }
 
+async function mandarTeste(teste, tentativa = 1) {
+  const res = await postInbound({ op: "contexto.teste", ...teste }, { silencioso404: true, rota: "foundry-combate" });
+  if (depoisDoEnvio(res) === "repete" && tentativa < RETENTATIVAS) {
+    setTimeout(() => void mandarTeste(teste, tentativa + 1), ESPERA_ERRO_MS * tentativa);
+  }
+}
+
 export function registerCombateSync() {
   const tipoDoAtor = (id) => game.actors.get(id)?.type ?? null;
 
@@ -91,6 +98,10 @@ export function registerCombateSync() {
     if (!ligado() || !isReportingGm()) return;
     const r = eventoDaMensagem(msg, { tipoDoAtor, combateId: combateAtual() });
     if (r) guardar(r.actorId, r.evento);
+    // v1.22.0 (A MÚSICA PELO CONTEXTO): o teste de perícia vai à edge
+    // foundry-combate; o banco decide se ele muda a música (investigação).
+    const t = testeDaMensagem(msg, { tipoDoAtor });
+    if (t) void mandarTeste(t);
   });
 
   Hooks.on("dnd5e.damageActor", (actor, changes) => {
@@ -116,5 +127,5 @@ export function registerCombateSync() {
     void vigia.aoApagar(combat);
   });
 
-  console.log(`${MODULE_ID} | acertos, dano e início/fim do combate → Companion registrados`);
+  console.log(`${MODULE_ID} | acertos, dano, início/fim do combate e testes de perícia → Companion registrados`);
 }

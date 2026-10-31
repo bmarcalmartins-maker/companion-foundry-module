@@ -80,3 +80,16 @@ test("a fila tem teto e a resposta da edge decide", () => {
   assert.equal(depoisDoEnvio({ ok: false, status: 503 }), "repete");
   assert.equal(depoisDoEnvio(null), "repete", "rede");
 });
+
+test("testeDaMensagem: o teste de perícia de um personagem (v1.22.0)", async () => {
+  const { testeDaMensagem } = await import("../scripts/combate.js");
+  const tipoDoAtor = (id) => ({ pc1: "character", npc1: "npc" })[id] ?? null;
+  const msg = (roll, actor = "pc1", id = "aB3dE5fG7hI9jK1l") => ({ id, speaker: { actor }, flags: { dnd5e: { roll } } });
+  assert.deepEqual(testeDaMensagem(msg({ type: "skill", skillId: "inv" }), { tipoDoAtor }), { pericia: "inv", evento_id: "m-aB3dE5fG7hI9jK1l" });
+  assert.deepEqual(testeDaMensagem(msg({ type: "skill", skillId: "ath" }), { tipoDoAtor }), { pericia: "ath", evento_id: "m-aB3dE5fG7hI9jK1l" });
+  assert.equal(testeDaMensagem(msg({ type: "skill", skillId: "inv" }, "npc1"), { tipoDoAtor }), null, "teste de NPC não conta");
+  assert.equal(testeDaMensagem(msg({ type: "attack" }), { tipoDoAtor }), null, "ataque não é teste");
+  assert.equal(testeDaMensagem(msg({ type: "tool", toolId: "thief" }), { tipoDoAtor }), null, "ferramenta não é perícia");
+  assert.equal(testeDaMensagem(msg({ type: "skill", skillId: "investigation" }), { tipoDoAtor }), null);
+  assert.equal(testeDaMensagem({ id: "x", flags: {} }, { tipoDoAtor }), null);
+});

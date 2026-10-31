@@ -232,6 +232,22 @@ quem decide é o banco do Companion).
   nada.
 - Sem sessão em andamento no Companion, a entrada não faz nada.
 
+### Os testes de perícia — desde a 1.22.0 (31/10)
+
+Para a **música pelo contexto** do Companion (a investigação muda a música;
+quem decide é o banco do Companion, `trilha_contexto_teste`).
+
+- Toda mensagem do chat de um **teste de perícia** de um **personagem**
+  (`flags.dnd5e.roll.type = "skill"`, com o `skillId`; o dnd5e 5.3 põe isso na
+  mensagem, `actor.mjs`, `#rollSkillTool`) vai, pelo GM ativo, à edge
+  `foundry-combate` como `{ op: "contexto.teste", pericia, evento_id }`. O
+  teste de NPC e o de ferramenta não vão.
+- O banco transforma em "investigação" só Investigação, Percepção, Intuição,
+  Arcanismo, História, Religião, Natureza e Sobrevivência; as outras perícias
+  não mudam nada. O id da mensagem faz o reenvio não duplicar.
+- Até 3 tentativas se a edge não responde. A configuração "Acertos e dano ao
+  Companion" liga e desliga junto.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -248,6 +264,6 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
-- `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`).
+- `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`); skill checks for the context soundtrack (v1.22.0, `testeDaMensagem` in `scripts/combate.js`).
 - `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).
 - `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.
