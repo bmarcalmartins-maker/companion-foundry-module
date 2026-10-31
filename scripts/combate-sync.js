@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./settings.js";
 import { isReportingGm, postInbound } from "./equip-sync.js";
 import { depoisDoEnvio, enfileirar, eventoDaMensagem, eventoDaVida } from "./combate.js";
+import { criarVigiaDoCombate } from "./combate-estado.js";
 
 /**
  * OS ACERTOS E O DANO → Companion (v1.11.0; as regras em combate.js). Só no
@@ -98,5 +99,22 @@ export function registerCombateSync() {
     if (r) guardar(r.actorId, r.evento);
   });
 
-  console.log(`${MODULE_ID} | acertos e dano → Companion registrados`);
+  // v1.21.0 (TRANCHE R, a trilha pelo clima): o combate começou ou acabou,
+  // pela edge foundry-combate (a mesma chave de entrada; a URL é a da entrada
+  // com o nome trocado). Só o GM ativo manda; a mesma configuração liga e desliga.
+  const vigia = criarVigiaDoCombate({
+    enviar: (corpo) => postInbound(corpo, { silencioso404: true, rota: "foundry-combate" }),
+    esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
+  });
+  vigia.conhecer(game.combats?.contents ?? []);
+  Hooks.on("updateCombat", (combat) => {
+    if (!ligado() || !isReportingGm()) return;
+    void vigia.aoAtualizar(combat);
+  });
+  Hooks.on("deleteCombat", (combat) => {
+    if (!ligado() || !isReportingGm()) return;
+    void vigia.aoApagar(combat);
+  });
+
+  console.log(`${MODULE_ID} | acertos, dano e início/fim do combate → Companion registrados`);
 }

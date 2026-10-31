@@ -1,4 +1,5 @@
 import { MODULE_ID, chaveDeEntrada } from "./settings.js";
+import { urlDaRota } from "./rotas.js";
 import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
 
 /**
@@ -115,8 +116,11 @@ let avisouSemConfig = false;
  * código desde a v11. A mensagem antiga também vale (edge anterior). Qualquer
  * outro 404 (item fora do inventário, rota errada) NÃO é "não vinculado".
  */
-export async function postInbound(payload, { silencioso404 = false } = {}) {
-  const url = game.settings.get(MODULE_ID, "inboundUrl");
+export async function postInbound(payload, { silencioso404 = false, rota = null } = {}) {
+  // `rota` (1.21.0): outra edge do Companion, com a mesma chave de entrada — a
+  // URL é a da foundry-inbound com o nome trocado (ex.: "foundry-combate").
+  const configurada = game.settings.get(MODULE_ID, "inboundUrl");
+  const url = rota && configurada ? urlDaRota(configurada, rota) : configurada;
   const key = chaveDeEntrada();
   if (!url || !key) {
     // Uma vez por sessão: com o tempo real, cada mudança de ficha passaria por
