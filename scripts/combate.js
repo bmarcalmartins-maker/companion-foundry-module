@@ -84,3 +84,20 @@ export function depoisDoEnvio(res) {
   if (res?.code === "actor_nao_vinculado" || res?.status === 400 || res?.status === 401 || res?.status === 413) return "descarta";
   return "repete"; // rede, 429, 5xx
 }
+
+/**
+ * O TESTE DE PERÍCIA (v1.22.0; A MÚSICA PELO CONTEXTO do Companion): a
+ * mensagem do chat de um teste de perícia de um PERSONAGEM vira
+ * `{ pericia, evento_id }` (o dnd5e 5.3 põe `flags.dnd5e.roll = { type:
+ * "skill", skillId }` na mensagem; actor.mjs, #rollSkillTool). Quem decide se a
+ * perícia vira "investigação" é o banco do Companion; aqui só sai o fato.
+ */
+export function testeDaMensagem(msg, { tipoDoAtor } = {}) {
+  const roll = msg?.flags?.dnd5e?.roll;
+  if (roll?.type !== "skill" || !msg?.id) return null;
+  const pericia = typeof roll.skillId === "string" ? roll.skillId.trim() : "";
+  if (!/^[a-z]{3}$/.test(pericia)) return null;
+  const actorId = msg.speaker?.actor;
+  if (!actorId || tipoDoAtor?.(actorId) !== "character") return null;
+  return { pericia, evento_id: `m-${msg.id}` };
+}
