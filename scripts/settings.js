@@ -96,6 +96,18 @@ export function registerSettings() {
     default: true,
   });
 
+  // v1.19.0: a música do Companion. A pasta (dentro de Data) onde moram os
+  // arquivos da biblioteca de sons do Companion: o caminho de cada faixa é
+  // relativo a ela ("mesa/tumba.mp3" → "sounds/mesa/tumba.mp3").
+  game.settings.register(MODULE_ID, "pastaDasTrilhas", {
+    name: "CFB.Settings.PastaDasTrilhas.Name",
+    hint: "CFB.Settings.PastaDasTrilhas.Hint",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "sounds",
+  });
+
   game.settings.registerMenu(MODULE_ID, "statusMenu", {
     name: "CFB.Settings.StatusMenu.Name",
     label: "CFB.Settings.StatusMenu.Label",

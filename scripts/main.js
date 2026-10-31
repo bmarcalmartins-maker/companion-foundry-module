@@ -6,6 +6,7 @@ import { registerLiveSync } from "./live-sync.js";
 import { registerMoedasSync } from "./moedas-sync.js";
 import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
+import { registerMusica } from "./trilhas-foundry.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 import { auditar } from "./auditoria-foundry.js";
 import { agendarCanonico, aplicarCanonico, desfazerCanonico } from "./canonico-foundry.js";
@@ -111,4 +112,7 @@ Hooks.once("ready", async () => {
   registerMoedasSync();
   // v1.11.0: os acertos e o dano, para o relatório do fim da sessão (combate-sync.js).
   registerCombateSync();
+  // v1.19.0: a música do Companion (trilhas-foundry.js): o que muda na
+  // playlist "Companion — Trilhas" e o que toca ao abrir vão ao Companion.
+  registerMusica();
 });

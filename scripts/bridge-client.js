@@ -9,6 +9,7 @@ import {
 } from "./equip-sync.js";
 import { readActor } from "./actor-read.js";
 import { pedirMagia } from "./magia-falada.js";
+import { receberComandoDeAudio } from "./trilhas-foundry.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
 import { criarFila } from "./fila-por-ator.js";
 import { aplicarMoedasDoCompanion } from "./moedas-sync.js";
@@ -264,6 +265,12 @@ export class BridgeClient {
         // entrada (op magia.resultado). Fora da fila do ator: não mexe nele.
         case "magia.pedir":
           result = pedirMagia({ actor_id, payload });
+          break;
+        // v1.19.0: a música (trilhas.js). Responde na hora ("recebido"); a
+        // playlist muda numa fila e o resultado volta pela entrada (op
+        // trilha.resultado). Fora da fila dos atores: não mexe em nenhum.
+        case "audio.comando":
+          result = { data: receberComandoDeAudio(payload) };
           break;
         default:
           throw new Error(`unknown action: ${action}`);

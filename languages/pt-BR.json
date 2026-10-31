@@ -35,5 +35,7 @@
   "CFB.Magia.AgoraNao": "Agora não",
   "CFB.Magia.PerguntaUsar": "Usar {magia} em {alvo}?",
   "CFB.Magia.Usar": "Usar",
-  "CFB.Magia.Depois": ", depois "
+  "CFB.Magia.Depois": ", depois ",
+  "CFB.Settings.PastaDasTrilhas.Name": "Pasta das trilhas do Companion",
+  "CFB.Settings.PastaDasTrilhas.Hint": "A pasta (dentro de Data) onde estão os arquivos da biblioteca de sons do Companion. O caminho de cada faixa é relativo a ela: \"mesa/tumba.mp3\" toca \"sounds/mesa/tumba.mp3\"."
 }
