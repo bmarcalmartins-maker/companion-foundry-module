@@ -136,6 +136,31 @@ Decisões do Bruno (29/09): **sintonia B, quantidade/usos B, itens nativos A**.
   atalhos). A pergunta continua: nada é usado sem o toque.
 - O pedido de antes (só `item_id`) vale como antes.
 
+### Item não identificado — desde a 1.18.0 (31/10)
+
+O Companion pode marcar um item como **não identificado** (o jogador vê só
+um nome de fachada). No dnd5e 5.3 isso é `system.identified` e
+`system.unidentified.name`/`.description` (os seis tipos físicos).
+
+- **Companion → Foundry:** o envio do inventário leva `identified`, a fachada
+  e, na flag `identificacao`, a VERSÃO da mudança no Companion. No item que o
+  ator já tem (nativo ou cópia), o módulo só aplica versão mais nova que a que
+  já aplicou (flag `identificacao_aplicada`): versão 0 (todo item na virada)
+  nunca mexe no que o Foundry tem, e um envio velho não desfaz o que o GM fez
+  aqui depois. O item novo (do compêndio ou casca) já nasce como o Companion
+  diz. O nome guardado continua o verdadeiro; o dnd5e mostra a fachada.
+- **Foundry → Companion:** o GM esconde ou revela o item AQUI → o
+  `item.estado` leva `identified`, a fachada e `identificacao_aplicada`. Só
+  quando a mudança foi feita aqui (não em todo estado nem ao abrir o mundo):
+  o item que já estava escondido no Foundry antes da 1.18.0 não some para o
+  jogador no Companion. A edge só grava se o Foundry já viu a versão de agora
+  do Companion. O item novo do Foundry (`item.upsert`) leva o nome VERDADEIRO
+  (`_source.name`) e a identificação.
+- **A ficha que o jogador lê** (`actor.snapshot`): o efeito de item escondido
+  fica de fora (`efeitos` e os `effects` dos equipados), como o dnd5e faz para
+  quem não é GM. O nome já é a fachada (o nome preparado).
+- Com o Companion de antes (sem a flag), nada muda.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso

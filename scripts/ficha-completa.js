@@ -64,6 +64,9 @@ function origemDo(efeito, nomeDaOrigem) {
 export function efeitosDaFicha(efeitos, nomeDaOrigem, resolver) {
   const out = [];
   for (const e of efeitos ?? []) {
+    // ITEM NÃO IDENTIFICADO (1.18.0): o efeito de item escondido fica fora da
+    // ficha que o jogador lê (a regra do dnd5e para quem não é GM).
+    if (e?.parent?.documentName === "Item" && e.parent.system?.identified === false) continue;
     const enxuto = efeitoEnxuto(e);
     // O valor com "@" (ex.: "@scale.monk.unarmored-movement") vai também
     // RESOLVIDO pelo Foundry, para o Companion mostrar o número e não a fórmula.

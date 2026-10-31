@@ -384,6 +384,61 @@ test("a ficha (actor.read, schema 3) leva as moedas, o inventário físico intei
   assert.deepEqual(r.data.efeitos, []);
 });
 
+test("ITEM NÃO IDENTIFICADO (1.18.0): a versão nova do Companion esconde no lugar; a velha não mexe; o nome guardado não é trocado", async () => {
+  const ator = new FakeActor({
+    id: "ator9",
+    name: "Grimbald",
+    items: [
+      // o dnd5e já mostra a fachada no nome preparado; o guardado é o verdadeiro
+      { _id: "esp", name: "Espada estranha", _source: { name: "Item e1" }, type: "weapon",
+        system: { equipped: false, quantity: 1, identified: false, unidentified: { name: "Espada estranha", description: "" } },
+        flags: { [MODULE_ID]: { synced: true, item_id: "e1", ajuste_aplicado: 0, identificacao_aplicada: 2 } } },
+      { _id: "ane", name: "Item e2", type: "equipment",
+        system: { equipped: false, quantity: 1, identified: true, unidentified: { name: "", description: "" } },
+        flags: { [MODULE_ID]: { synced: true, item_id: "e2", ajuste_aplicado: 0, identificacao_aplicada: 0 } } },
+    ],
+  });
+  game.actors.set(ator.id, ator);
+  const resposta = await comando({
+    request_id: "id1",
+    action: "actor.update",
+    actor_id: "ator9",
+    payload: {
+      items: [
+        // versão 2 já aplicada: o envio velho (identificado) não desfaz
+        itemDoEnvio("e1", { system: { identified: true }, flags: { ajuste_total: 0, identificacao: { identificado: true, versao: 2 } } }),
+        // versão 1, nova: esconde, com a fachada
+        itemDoEnvio("e2", {
+          system: { identified: false, unidentified: { name: "Anel opaco", description: "<p>Frio.</p>" } },
+          flags: { ajuste_total: 0, identificacao: { identificado: false, versao: 1 } },
+        }),
+        // item novo (casca, sem compêndio) já nasce escondido e com a versão
+        itemDoEnvio("e3", {
+          raiz: { type: "consumable" },
+          system: { identified: false, unidentified: { name: "Frasco turvo", description: "" } },
+          flags: { ajuste_total: 0, identificacao: { identificado: false, versao: 4 }, compendium_hint: null },
+        }),
+      ],
+    },
+  });
+  assert.equal(resposta.ok, true, JSON.stringify(resposta));
+  const esp = ator.items.get("esp");
+  assert.equal(esp.system.identified, false, "a versão já aplicada não mexe");
+  assert.equal(esp.name, "Espada estranha", "o plano compara com o nome guardado: não renomeia");
+  const ane = ator.items.get("ane");
+  assert.equal(ane.system.identified, false);
+  assert.equal(ane.system.unidentified.name, "Anel opaco");
+  assert.equal(ane.system.unidentified.description, "<p>Frio.</p>");
+  assert.equal(ane.flags[MODULE_ID].identificacao_aplicada, 1);
+  const novo = ator.items.find((i) => i.flags[MODULE_ID]?.item_id === "e3");
+  assert.equal(novo.system.identified, false);
+  assert.equal(novo.flags[MODULE_ID].identificacao_aplicada, 4);
+  // A mudança veio da ponte: o estado que volta não leva a identificação (não é do GM).
+  await espera(1200);
+  const estado = chamadasInbound.filter((c) => c.corpo.op === "item.estado").flatMap((c) => c.corpo.items);
+  assert.ok(estado.every((i) => !("identified" in i)), JSON.stringify(estado));
+});
+
 test("fim: desconecta (sem timers pendurados)", () => {
   cliente.disconnect();
 });

@@ -33,14 +33,24 @@
  *    módulo que sobram saem.
  *  - Crachá que o Foundry apagou há pouco (a volta ao Companion ainda não
  *    chegou) não é recriado.
+ *  - IDENTIFICAÇÃO (1.18.0, ITEM NÃO IDENTIFICADO do Companion): o envio traz
+ *    `identificacao` ({ identificado, versao }) e a fachada do dnd5e
+ *    (`system.unidentified`). No item que já existe (nativo ou cópia), só a
+ *    versão MAIS NOVA que a já aplicada (`identificacaoAplicada`, a flag; sem
+ *    ela, 0) muda `identified` e a fachada: versão 0 (todo item na virada)
+ *    nunca mexe no que o Foundry tem, e um envio velho não desfaz o que o GM
+ *    fez aqui depois. Mesmo modelo do `ajuste`.
  *
  * @typedef {{ id: string, cracha: string|null, synced: boolean, sincronizavel: boolean,
  *   temEquipado: boolean, equipado?: boolean, temQuantidade: boolean, quantidade?: number,
- *   ajusteAplicado?: number, nome?: string, img?: string }} Existente
+ *   ajusteAplicado?: number, nome?: string, img?: string, temIdentificacao?: boolean,
+ *   identificado?: boolean, identificacaoAplicada?: number }} Existente
  * @typedef {{ cracha: string|null, equipado?: boolean, quantidade?: number, ajuste?: number,
- *   nome?: string, img?: string, dados: object }} Recebido
+ *   nome?: string, img?: string, identificacao?: { identificado?: boolean, versao?: number },
+ *   fachada?: { name?: string, description?: string }, dados: object }} Recebido
  * @typedef {{ _id: string, equipado?: boolean, quantidade?: number, ajusteAplicado?: number,
- *   nome?: string, img?: string }} Atualizacao
+ *   nome?: string, img?: string, identificado?: boolean,
+ *   fachada?: { name?: string, description?: string }, identificacaoAplicada?: number }} Atualizacao
  */
 
 /** Imagem que vale levar ao item: do Companion e não um ícone genérico do Foundry. */
@@ -102,6 +112,15 @@ export function planejarInventario({ existentes, recebidos, saidas = new Set(), 
       // Sem `ajusteAplicado` (item de antes do LOTE 08) só marca a base: o que
       // o Companion mudou antes já foi imposto pelo envio antigo.
       if (e.ajusteAplicado !== r.ajuste) mudanca.ajusteAplicado = r.ajuste;
+    }
+    const ident = r.identificacao;
+    const aplicada = Number.isFinite(e.identificacaoAplicada) ? e.identificacaoAplicada : 0;
+    if (e.temIdentificacao && Number.isFinite(ident?.versao) && ident.versao > aplicada) {
+      if (typeof ident.identificado === "boolean" && ident.identificado !== e.identificado) {
+        mudanca.identificado = ident.identificado;
+      }
+      if (r.fachada && typeof r.fachada === "object") mudanca.fachada = r.fachada;
+      mudanca.identificacaoAplicada = ident.versao;
     }
     if (e.synced) {
       if (r.nome && r.nome !== e.nome) mudanca.nome = r.nome;

@@ -165,3 +165,57 @@ test("equipado só vai a item que tem o campo (consumível não tem)", () => {
   });
   assert.deepEqual(plano.atualizar, []);
 });
+
+// ── ITEM NÃO IDENTIFICADO (1.18.0) ──
+const identificavel = (extra = {}) => ({ temIdentificacao: true, identificado: true, ajusteAplicado: 0, ...extra });
+
+test("identificação: versão 0 (a virada) nunca mexe no que o Foundry tem", () => {
+  const plano = planejarInventario({
+    existentes: [nativo("f1", "c1", identificavel({ identificado: false }))],
+    recebidos: [recebido("c1", { identificacao: { identificado: true, versao: 0 } })],
+  });
+  assert.deepEqual(plano.atualizar, []);
+});
+
+test("identificação: a versão mais nova do Companion marca não identificado, com a fachada", () => {
+  const plano = planejarInventario({
+    existentes: [copia("f1", "c1", identificavel({ identificacaoAplicada: 2 }))],
+    recebidos: [recebido("c1", {
+      identificacao: { identificado: false, versao: 3 },
+      fachada: { name: "Espada estranha", description: "<p>Quente.</p>" },
+    })],
+  });
+  assert.deepEqual(plano.atualizar, [{
+    _id: "f1", identificado: false, fachada: { name: "Espada estranha", description: "<p>Quente.</p>" }, identificacaoAplicada: 3,
+  }]);
+});
+
+test("identificação: o envio VELHO (versão já aplicada) não desfaz o que o GM fez aqui", () => {
+  const plano = planejarInventario({
+    existentes: [nativo("f1", "c1", identificavel({ identificado: true, identificacaoAplicada: 3 }))],
+    recebidos: [recebido("c1", { identificacao: { identificado: false, versao: 3 } })],
+  });
+  assert.deepEqual(plano.atualizar, []);
+});
+
+test("identificação: revelar no Companion vale também no NATIVO; sem o campo no item, nada", () => {
+  const plano = planejarInventario({
+    existentes: [
+      nativo("f1", "c1", identificavel({ identificado: false, identificacaoAplicada: 1 })),
+      nativo("f2", "c2", { temIdentificacao: false, ajusteAplicado: 0 }),
+    ],
+    recebidos: [
+      recebido("c1", { identificacao: { identificado: true, versao: 2 } }),
+      recebido("c2", { identificacao: { identificado: false, versao: 5 } }),
+    ],
+  });
+  assert.deepEqual(plano.atualizar, [{ _id: "f1", identificado: true, identificacaoAplicada: 2 }]);
+});
+
+test("identificação: o módulo de antes do Companion (sem `identificacao`) não mexe em nada", () => {
+  const plano = planejarInventario({
+    existentes: [copia("f1", "c1", identificavel({ identificado: false }))],
+    recebidos: [recebido("c1")],
+  });
+  assert.deepEqual(plano.atualizar, []);
+});

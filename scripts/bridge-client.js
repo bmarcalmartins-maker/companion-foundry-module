@@ -359,6 +359,15 @@ export class BridgeClient {
     if (item.system?.equipped !== undefined && "equipped" in (data.system ?? {})) {
       data.system.equipped = item.system.equipped;
     }
+    // ITEM NÃO IDENTIFICADO (1.18.0): a identificação do Companion vale no item
+    // do compêndio também (o nome continua o verdadeiro; o dnd5e mostra a
+    // fachada no nome preparado).
+    if (typeof item.system?.identified === "boolean" && "identified" in (data.system ?? {})) {
+      data.system.identified = item.system.identified;
+      if (item.system.unidentified && typeof item.system.unidentified === "object") {
+        data.system.unidentified = { ...(data.system.unidentified ?? {}), ...item.system.unidentified };
+      }
+    }
     // Keep compendium art unless the Companion sent a non-placeholder image of its own.
     if (item.img && !item.img.startsWith("icons/svg/")) data.img = item.img;
     // Payload flags merge on top — item_id/synced markers drive idempotent re-sync.
@@ -501,8 +510,13 @@ export class BridgeClient {
       temQuantidade: "quantity" in (i.system ?? {}),
       quantidade: i.system?.quantity,
       ajusteAplicado: i.getFlag(MODULE_ID, "ajuste_aplicado"),
-      nome: i.name,
+      // O nome GUARDADO: no item não identificado, `i.name` é a fachada (o
+      // dnd5e troca no preparo) e o plano renomearia a cada envio.
+      nome: i._source?.name ?? i.name,
       img: i.img,
+      temIdentificacao: "identified" in (i.system ?? {}),
+      identificado: i.system?.identified !== false,
+      identificacaoAplicada: i.getFlag(MODULE_ID, "identificacao_aplicada"),
     }));
     const recebidos = items.map((item) => {
       const nossa = item?.flags?.[MODULE_ID] ?? {};
@@ -513,6 +527,8 @@ export class BridgeClient {
         ajuste: typeof nossa.ajuste_total === "number" ? nossa.ajuste_total : undefined,
         nome: item?.name,
         img: item?.img,
+        identificacao: nossa.identificacao && typeof nossa.identificacao === "object" ? nossa.identificacao : undefined,
+        fachada: item?.system?.unidentified && typeof item.system.unidentified === "object" ? item.system.unidentified : undefined,
         dados: item,
       };
     });
@@ -530,6 +546,9 @@ export class BridgeClient {
     const paraCriar = plano.criar.map((r) => {
       const dados = foundry.utils.deepClone(r.dados);
       if (Number.isFinite(r.ajuste)) foundry.utils.setProperty(dados, `flags.${MODULE_ID}.ajuste_aplicado`, r.ajuste);
+      if (Number.isFinite(r.identificacao?.versao)) {
+        foundry.utils.setProperty(dados, `flags.${MODULE_ID}.identificacao_aplicada`, r.identificacao.versao);
+      }
       return dados;
     });
     const preparados = paraCriar.length ? await this.#prepareItems(paraCriar) : [];
@@ -583,5 +602,9 @@ function paraDocumento(m) {
   if (m.ajusteAplicado !== undefined) doc[`flags.${MODULE_ID}.ajuste_aplicado`] = m.ajusteAplicado;
   if (m.nome !== undefined) doc.name = m.nome;
   if (m.img !== undefined) doc.img = m.img;
+  if (m.identificado !== undefined) doc["system.identified"] = m.identificado;
+  if (typeof m.fachada?.name === "string") doc["system.unidentified.name"] = m.fachada.name;
+  if (typeof m.fachada?.description === "string") doc["system.unidentified.description"] = m.fachada.description;
+  if (m.identificacaoAplicada !== undefined) doc[`flags.${MODULE_ID}.identificacao_aplicada`] = m.identificacaoAplicada;
   return doc;
 }
