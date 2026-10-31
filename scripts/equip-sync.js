@@ -23,6 +23,13 @@ import { assinaturaDosEfeitos, efeitoEnxuto } from "./effect-shape.js";
  *    item, deste actor.
  *  - SYNC INICIAL: syncActorInventory(actor) envia todo o inventário de uma
  *    vez (itens que existiam antes da ponte), no ritmo do rate-limit da edge.
+ *  - IDENTIFICAÇÃO (1.18.0, ITEM NÃO IDENTIFICADO do Companion): o GM marca ou
+ *    revela o item AQUI → o item.estado leva `identified`, a fachada e a versão
+ *    do Companion que o item já aplicou (`identificacao_aplicada`). Só quando a
+ *    mudança foi feita aqui, no Foundry (não em todo estado, nem no "ao abrir o
+ *    mundo"): o item que já estava escondido no Foundry antes da 1.18.0 não
+ *    some para o jogador no Companion. O upsert do item novo leva o nome
+ *    VERDADEIRO (`_source.name`; o preparado é a fachada) e a identificação.
  *
  * ══ TRAVA DO LOOP DE ECO — três camadas independentes ══
  * O perigo: Companion manda item → Foundry cria → createItem dispara → módulo
@@ -204,7 +211,8 @@ function buildUpsertPayload(item, actor) {
     op: "item.upsert",
     actor_id: actor.id,
     foundry_item_id: item.id,
-    name: item.name ?? "Item",
+    // O nome GUARDADO: no item não identificado, o preparado é a fachada.
+    name: item._source?.name ?? item.name ?? "Item",
     type: item.type ?? "",
     // Subtipo dnd5e (system.type.value): pra armadura é "light"/"medium"/
     // "heavy"/"shield"; pra equipamento genérico é "trinket"/"clothing"/etc.
@@ -224,6 +232,25 @@ function buildUpsertPayload(item, actor) {
     // Raridade (v1.10.0): sem ela, o item nascido aqui chegava ao Companion
     // sem raridade e não acendia a moldura de item mágico no boneco.
     ...campoDeRaridade(item),
+    // Identificação (v1.18.0): o item novo já chega como o GM o deixou.
+    ...camposDeIdentificacao(item),
+  };
+}
+
+/**
+ * ITEM NÃO IDENTIFICADO (1.18.0) — `system.identified`, a fachada
+ * (`system.unidentified`) e a versão do Companion que o item já aplicou (a
+ * flag; 0 = nunca recebeu uma). Só nos tipos que o dnd5e deixa identificar.
+ */
+export function camposDeIdentificacao(item) {
+  const sys = item?.system ?? {};
+  if (!("identified" in sys)) return {};
+  const aplicada = Number(item?.getFlag?.(MODULE_ID, "identificacao_aplicada") ?? item?.flags?.[MODULE_ID]?.identificacao_aplicada);
+  return {
+    identified: sys.identified !== false,
+    identificacao_aplicada: Number.isInteger(aplicada) && aplicada >= 0 ? aplicada : 0,
+    unidentified_name: typeof sys.unidentified?.name === "string" ? sys.unidentified.name : "",
+    unidentified_description: typeof sys.unidentified?.description === "string" ? sys.unidentified.description : "",
   };
 }
 
@@ -436,6 +463,8 @@ const RETENTATIVAS = 3;
 const estadoPendente = new Map(); // actorId -> Set(itemId)
 const timersEstado = new Map();
 const estadoEmVoo = new Set();
+// Itens cuja identificação o GM mudou AQUI e ainda não chegou ao Companion.
+const identificacaoMudou = new Set(); // itemId
 
 /** Estado de um item com crachá, lido AGORA — o que o Companion grava. */
 function estadoDoItem(item) {
@@ -443,7 +472,8 @@ function estadoDoItem(item) {
   const estado = { item_id: getCompanionItemId(item) };
   if (typeof sys.equipped === "boolean") estado.equipped = sys.equipped;
   if (Number.isFinite(sys.quantity)) estado.qty = sys.quantity;
-  return { ...estado, ...camposDeSintonia(item) };
+  const ident = identificacaoMudou.has(item?.id) ? camposDeIdentificacao(item) : {};
+  return { ...estado, ...camposDeSintonia(item), ...ident };
 }
 
 /**
@@ -480,10 +510,8 @@ async function enviarEstado(actorId, tentativa) {
   const ids = [...(estadoPendente.get(actorId) ?? [])];
   estadoPendente.delete(actorId);
   if (!actor || !ids.length) return;
-  const itens = ids
-    .map((id) => actor.items.get(id))
-    .filter((i) => i && getCompanionItemId(i))
-    .map(estadoDoItem);
+  const docs = ids.map((id) => actor.items.get(id)).filter((i) => i && getCompanionItemId(i));
+  const itens = docs.map(estadoDoItem);
   if (!itens.length) return;
 
   estadoEmVoo.add(actorId);
@@ -492,6 +520,7 @@ async function enviarEstado(actorId, tentativa) {
       const lote = itens.slice(i, i + MAX_ITENS_POR_ESTADO);
       const res = await postInbound({ op: "item.estado", actor_id: actorId, items: lote }, { silencioso404: true });
       if (res?.ok) {
+        for (const d of docs.slice(i, i + MAX_ITENS_POR_ESTADO)) identificacaoMudou.delete(d.id);
         if (res.fora?.length) {
           console.warn(`${MODULE_ID} | estado: ${res.fora.length} item(ns) com crachá que o Companion não tem neste personagem`, res.fora);
         }
@@ -580,7 +609,9 @@ export function registerEquipWatcher() {
     if (options?.companionBridge) return; // camada 1: veio do Companion
     const sys = changes?.system ?? {};
     const equipped = sys.equipped;
-    const mudouEstado = typeof equipped === "boolean" || "quantity" in sys || "attuned" in sys || "attunement" in sys;
+    const mudouIdentificacao = "identified" in sys || "unidentified" in sys;
+    const mudouEstado = typeof equipped === "boolean" || "quantity" in sys || "attuned" in sys || "attunement" in sys
+      || mudouIdentificacao;
     if (!mudouEstado) return;
     if (!isReportingGm()) return;
 
@@ -588,6 +619,7 @@ export function registerEquipWatcher() {
     if (!actor) return;
 
     if (getCompanionItemId(item)) {
+      if (mudouIdentificacao) identificacaoMudou.add(item.id);
       agendarEstado(actor, [item]);
       return;
     }

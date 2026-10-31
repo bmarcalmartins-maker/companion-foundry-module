@@ -126,7 +126,10 @@ export function readActor(actorId, moduleId) {
       companion_item_id:
         i.getFlag?.(moduleId, "item_id") ?? i.flags?.companion?.item_id ?? null,
       equipped: true,
-      effects: Array.from(i.effects ?? []).map(efeitoEnxuto),
+      // ITEM NÃO IDENTIFICADO (1.18.0): a ficha vai ao Companion, e o jogador a
+      // lê; o efeito do item escondido não entrega o que ele faz (o dnd5e também
+      // o esconde de quem não é GM). O nome já é a fachada (o preparado).
+      effects: i.system?.identified === false ? [] : Array.from(i.effects ?? []).map(efeitoEnxuto),
     }));
 
   const inventario = actor.items.filter(isSyncableItem).map((i) => ({

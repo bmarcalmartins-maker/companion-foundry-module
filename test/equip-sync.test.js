@@ -187,3 +187,51 @@ test("ao abrir o mundo, o estado de cada personagem vai uma vez (a sintonia nunc
   const iniciais = posts.filter((p) => p.op === "item.estado");
   assert.ok(iniciais.some((p) => p.actor_id === "atorB"), JSON.stringify(iniciais));
 });
+
+test("ITEM NÃO IDENTIFICADO: o GM esconde ou revela AQUI → o estado leva a identificação e a versão aplicada", async () => {
+  posts.length = 0;
+  const espada = comCracha("e9", "ce9", {
+    type: "weapon",
+    system: { equipped: false, identified: true, unidentified: { name: "", description: "" } },
+    flags: { [MODULE_ID]: { identificacao_aplicada: 4 } },
+  });
+  espada.system.identified = false;
+  espada.system.unidentified = { name: "Espada estranha", description: "<p>Quente.</p>" };
+  await dispara("updateItem", espada, { system: { identified: false, unidentified: { name: "Espada estranha" } } }, {});
+  await espera(1100);
+  const estado = posts.find((p) => p.op === "item.estado")?.items?.[0];
+  assert.deepEqual(estado, {
+    item_id: "ce9", equipped: false, identified: false, identificacao_aplicada: 4,
+    unidentified_name: "Espada estranha", unidentified_description: "<p>Quente.</p>",
+  });
+  // e só daquela vez: o estado seguinte (equipar) não leva a identificação
+  posts.length = 0;
+  espada.system.equipped = true;
+  await dispara("updateItem", espada, { system: { equipped: true } }, {});
+  await espera(1100);
+  assert.deepEqual(posts.find((p) => p.op === "item.estado")?.items?.[0], { item_id: "ce9", equipped: true });
+});
+
+test("ITEM NÃO IDENTIFICADO: identificação mudada pela PONTE (o Companion) não volta", async () => {
+  posts.length = 0;
+  const anel = comCracha("a9", "ca9", { system: { identified: true } });
+  await dispara("updateItem", anel, { system: { identified: false } }, { companionBridge: true });
+  await espera(1100);
+  assert.equal(posts.length, 0);
+});
+
+test("ITEM NÃO IDENTIFICADO: o upsert do item novo leva o nome VERDADEIRO e a identificação", async () => {
+  posts.length = 0;
+  const pocao = new FakeItem("n9", ator, {
+    name: "Frasco turvo", type: "consumable",
+    system: { quantity: 1, identified: false, unidentified: { name: "Frasco turvo", description: "" } },
+  });
+  pocao._source = { name: "Potion of Giant Strength" };
+  await dispara("createItem", pocao, {}, "gm");
+  await espera(50);
+  const up = posts.find((p) => p.op === "item.upsert");
+  assert.equal(up.name, "Potion of Giant Strength");
+  assert.equal(up.identified, false);
+  assert.equal(up.unidentified_name, "Frasco turvo");
+  assert.equal(up.identificacao_aplicada, 0);
+});

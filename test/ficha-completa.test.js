@@ -41,6 +41,17 @@ test("efeitos: origem do item, do ator (magia), suprimido e o valor resolvido", 
   assert.deepEqual(r[2].statuses, ["blessed"]);
 });
 
+test("efeitos: o de item NÃO IDENTIFICADO fica fora da ficha que o jogador lê (1.18.0)", () => {
+  const anel = { documentName: "Item", id: "i2", name: "Anel estranho", type: "equipment", system: { identified: false } };
+  const bota = { documentName: "Item", id: "i1", name: "Boots of Speed", type: "equipment", system: { identified: true } };
+  const lista = [
+    efeito("e1", "Ring of Protection", [{ key: "system.attributes.ac.bonus", type: "add", value: "1" }], { parent: anel }),
+    efeito("e2", "Boots", [{ key: "system.attributes.movement.walk", type: "multiply", value: "2" }], { parent: bota }),
+  ];
+  const r = efeitosDaFicha(lista, () => null, () => undefined);
+  assert.deepEqual(r.map((x) => x.name), ["Boots"]);
+});
+
 test("habilidades: só o que não é físico, com todos os efeitos", () => {
   const itens = [
     { id: "c", name: "Monk", type: "class", system: { identifier: "monk", levels: 6, source: { rules: "2014" } }, effects: [] },
