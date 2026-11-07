@@ -10,6 +10,7 @@ import {
 import { readActor } from "./actor-read.js";
 import { pedirMagia } from "./magia-falada.js";
 import { receberComandoDeAudio } from "./trilhas-foundry.js";
+import { comandoDeCombate } from "./iniciativa-foundry.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
 import { criarFila } from "./fila-por-ator.js";
 import { aplicarMoedasDoCompanion } from "./moedas-sync.js";
@@ -271,6 +272,13 @@ export class BridgeClient {
         // trilha.resultado). Fora da fila dos atores: não mexe em nenhum.
         case "audio.comando":
           result = { data: receberComandoDeAudio(payload) };
+          break;
+        // v1.23.0: a iniciativa falada (iniciativa-foundry.js): a lista da
+        // cena, abrir o combate, rolar pelo Companion, começar. Responde na
+        // hora; quem rolou volta pela entrada (op iniciativa.rolou). Fora da
+        // fila dos atores: mexe no combate, não num ator.
+        case "combate.comando":
+          result = { data: await comandoDeCombate(payload) };
           break;
         default:
           throw new Error(`unknown action: ${action}`);

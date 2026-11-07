@@ -6,6 +6,7 @@ import { registerLiveSync } from "./live-sync.js";
 import { registerMoedasSync } from "./moedas-sync.js";
 import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
+import { registerIniciativaQuery, registerIniciativaSync } from "./iniciativa-foundry.js";
 import { registerMusica } from "./trilhas-foundry.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 import { auditar } from "./auditoria-foundry.js";
@@ -22,6 +23,9 @@ Hooks.once("init", () => {
   // v1.12.0: a magia falada. Em TODO navegador (o do jogador também): é o
   // handler da pergunta que o GM manda ao dono do ator (magia-falada.js).
   registerMagiaFalada();
+  // v1.23.0: a iniciativa falada. Em TODO navegador: a janela "Rolar
+  // iniciativa?" do jogador e a marca "rolado pelo Companion" (iniciativa-foundry.js).
+  registerIniciativaQuery();
   console.log(`${MODULE_ID} | initialized`);
 });
 
@@ -115,4 +119,7 @@ Hooks.once("ready", async () => {
   // v1.19.0: a música do Companion (trilhas-foundry.js): o que muda na
   // playlist "Companion — Trilhas" e o que toca ao abrir vão ao Companion.
   registerMusica();
+  // v1.23.0: a iniciativa falada: a seleção com o cartão aberto, quem rolou e
+  // o combate apagado vão ao Companion (iniciativa-foundry.js).
+  registerIniciativaSync();
 });

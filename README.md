@@ -248,6 +248,39 @@ quem decide é o banco do Companion, `trilha_contexto_teste`).
 - Até 3 tentativas se a edge não responde. A configuração "Acertos e dano ao
   Companion" liga e desliga junto.
 
+### A iniciativa falada — desde a 1.23.0 (07/11)
+
+O Mestre diz "iniciativa" na mesa (ou aperta "Iniciativa" na Mesa do
+Companion), escolhe num cartão quem entra, e o combate abre aqui.
+
+- **A lista** (op `combate.comando`, `acao: "cena"`, pela ponte, rota
+  `POST /combate`): os tokens da cena ATIVA (`game.scenes.active`), os
+  personagens do Companion com ou sem token, os outros com miniatura (48 px,
+  `ImageHelper.createThumbnail`) e os selecionados pelo GM agora
+  (`canvas.tokens.controlled`, só se ele está vendo a cena ativa). Com o cartão
+  aberto (até 15 min), o GM ativo manda a seleção nova a cada `controlToken`
+  (`op: "iniciativa.selecao"`, edge `foundry-combate`).
+- **Abrir** (`acao: "abrir"`): cria o combate na cena (ou usa o de agora),
+  adiciona os marcados (`createEmbeddedDocuments("Combatant")`, com o
+  escondido), rola SÓ os que não são personagens do Companion
+  (`combat.rollInitiative(ids)`; no dnd5e, sem diálogo e com a vantagem da
+  ficha) e pergunta "Rolar iniciativa?" ao jogador dono e conectado
+  (`User#query`, a pergunta `companion-foundry-bridge.rolarIniciativa`).
+  Responde na hora.
+- **No navegador do jogador**: a janela "Rolar iniciativa?"; "Rolar" rola
+  como ele (`combat.rollInitiative([o dele])`). A janela fecha sozinha se a
+  iniciativa chega por outro caminho (o botão do Companion, o d20 do Combat
+  Tracker). Nunca rola duas vezes.
+- **Rolar pelo Companion** (`acao: "rolar"`): rola no navegador do jogador,
+  sem perguntar; sem ele no Foundry, o GM rola por ele. A mensagem do chat diz
+  "rolado pelo Companion" (e "pelo Mestre", quando foi o GM).
+- **Quem rolou** volta ao Companion pelo `updateCombatant` (só personagem;
+  `op: "iniciativa.rolou"`), venha a rolagem de onde vier. O combate apagado
+  vai como `op: "iniciativa.combate_fim"`.
+- **Começar** (`acao: "comecar"`): `startCombat()` — o Companion pede quando o
+  último jogador rola, ou no "Começar agora". A música pelo contexto vê o
+  começo como sempre (1.21.0).
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -265,5 +298,6 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
 - `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`); skill checks for the context soundtrack (v1.22.0, `testeDaMensagem` in `scripts/combate.js`).
+- `scripts/iniciativa.js` / `scripts/iniciativa-foundry.js` — the spoken initiative (v1.23.0): the scene list, opening the combat, the player's roll prompt, rolling via the Companion.
 - `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).
 - `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.
