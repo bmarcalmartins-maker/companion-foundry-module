@@ -37,5 +37,12 @@
   "CFB.Magia.Usar": "Usar",
   "CFB.Magia.Depois": ", depois ",
   "CFB.Settings.PastaDasTrilhas.Name": "Pasta das trilhas do Companion",
-  "CFB.Settings.PastaDasTrilhas.Hint": "A pasta (dentro de Data) onde estão os arquivos da biblioteca de sons do Companion. O caminho de cada faixa é relativo a ela: \"mesa/tumba.mp3\" toca \"sounds/mesa/tumba.mp3\"."
+  "CFB.Settings.PastaDasTrilhas.Hint": "A pasta (dentro de Data) onde estão os arquivos da biblioteca de sons do Companion. O caminho de cada faixa é relativo a ela: \"mesa/tumba.mp3\" toca \"sounds/mesa/tumba.mp3\".",
+  "CFB.Iniciativa.Titulo": "Iniciativa",
+  "CFB.Iniciativa.Pergunta": "{nome}, rolar a sua iniciativa?",
+  "CFB.Iniciativa.Dica": "O Mestre abriu o combate pelo Companion. Você também pode rolar pelo botão da Mesa do Companion; vale o primeiro.",
+  "CFB.Iniciativa.Rolar": "Rolar",
+  "CFB.Iniciativa.AgoraNao": "Agora não",
+  "CFB.Iniciativa.RoladoPeloCompanion": "{nome} rola a iniciativa — rolado pelo Companion",
+  "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rola a iniciativa — rolado pelo Companion (pelo Mestre: o jogador não está no Foundry)"
 }

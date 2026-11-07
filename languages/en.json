@@ -37,5 +37,12 @@
   "CFB.Magia.Usar": "Use",
   "CFB.Magia.Depois": ", then ",
   "CFB.Settings.PastaDasTrilhas.Name": "Companion tracks folder",
-  "CFB.Settings.PastaDasTrilhas.Hint": "The folder (inside Data) holding the files of the Companion sound library. Each track path is relative to it: \"mesa/tumba.mp3\" plays \"sounds/mesa/tumba.mp3\"."
+  "CFB.Settings.PastaDasTrilhas.Hint": "The folder (inside Data) holding the files of the Companion sound library. Each track path is relative to it: \"mesa/tumba.mp3\" plays \"sounds/mesa/tumba.mp3\".",
+  "CFB.Iniciativa.Titulo": "Initiative",
+  "CFB.Iniciativa.Pergunta": "{nome}, roll your initiative?",
+  "CFB.Iniciativa.Dica": "The GM opened the combat from the Companion. You can also roll with the button on the Companion table; the first one counts.",
+  "CFB.Iniciativa.Rolar": "Roll",
+  "CFB.Iniciativa.AgoraNao": "Not now",
+  "CFB.Iniciativa.RoladoPeloCompanion": "{nome} rolls for initiative — rolled via the Companion",
+  "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rolls for initiative — rolled via the Companion (by the GM: the player is not in Foundry)"
 }
