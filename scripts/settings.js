@@ -96,6 +96,17 @@ export function registerSettings() {
     default: true,
   });
 
+  // v1.24.0: a ORDEM DO COMBATE vai ao Companion (ordem-foundry.js): a ordem, a
+  // vez, a rodada, a vida e quem está escondido. Desligado, nada sai.
+  game.settings.register(MODULE_ID, "ordemAoCompanion", {
+    name: "CFB.Settings.Ordem.Name",
+    hint: "CFB.Settings.Ordem.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
   // v1.19.0: a música do Companion. A pasta (dentro de Data) onde moram os
   // arquivos da biblioteca de sons do Companion: o caminho de cada faixa é
   // relativo a ela ("mesa/tumba.mp3" → "sounds/mesa/tumba.mp3").

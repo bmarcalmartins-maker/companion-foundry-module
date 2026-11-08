@@ -281,11 +281,50 @@ Companion), escolhe num cartão quem entra, e o combate abre aqui.
   último jogador rola, ou no "Começar agora". A música pelo contexto vê o
   começo como sempre (1.21.0).
 
+### A ordem do combate — desde a 1.24.0 (08/11)
+
+Depois que todos rolam, a ORDEM do combate aparece no Companion (na Mesa do
+Mestre e na de cada jogador) e segue o Foundry nos dois sentidos.
+
+- **A foto** (`scripts/ordem.js`, `fotoDoCombate`): o combate COMEÇADO na cena
+  ativa (o ativo dela, senão o último; sem um, o começado que não é de cena
+  nenhuma), na ordem de `combat.turns` (a mesma do Combat Tracker e do
+  Carousel): o nome, a imagem (o CAMINHO do Foundry, não a miniatura), a
+  iniciativa (nula = não rolou), o escondido (o combatente e o token), o
+  derrotado, o tipo do ator e a vida (dnd5e: `hp.value`, o máximo efetivo e o
+  temporário). O Companion tira a vida e os escondidos do que o jogador lê.
+- **Quando sai** (só o GM ativo, `scripts/ordem-foundry.js`): cada gancho de
+  combate, combatente, ator, token, cena ativa e dano só AGENDA uma comparação
+  para daqui a 0,4 s; a cada 4 s uma comparação local pega o que nenhum gancho
+  avisou (a vida do token não ligado). A foto vai à edge `foundry-combate`
+  (`op: "combate.ordem"`) só quando muda, e a cada 30 s de novo, o "estou vivo"
+  (75 s sem ele, o Companion diz "Foundry offline"). Um envio por vez; sem
+  combate, nada fica saindo. Desliga em "A ordem do combate no Companion".
+- **Os comandos do Mestre** (a mesma `op: "combate.comando"` da ponte):
+  `acao: "proximo"` (`combat.nextTurn()`), `"anterior"` (`previousTurn()` com
+  `turnEvents: false`, posto pelo gancho `combatTurn`/`combatRound`: o dnd5e
+  não recupera usos ao voltar) e `"focar"` (o token selecionado e a câmera
+  nele; com o GM noutra cena, `scene.view()` leva só a visão dele). O turno só
+  passa se a vez ainda for a que o Mestre viu (`vez_vista`; senão, `recusado:
+  "a_vez_mudou"`): dois cliques não pulam dois turnos.
+- **O código velho no cache** (o Foundry guarda os arquivos do módulo 4 h):
+  `scripts/versao.js` diz a versão DESTE código (o release a carimba junto com
+  o `module.json`). Em todo navegador, se a versão instalada (`game.modules`,
+  que vem do servidor) for outra, aparece "recarregue com Ctrl+Shift+R". O GM
+  ativo pergunta a versão do código a cada jogador conectado (`User#query`,
+  `companion-foundry-bridge.versao`; quem não responde roda código anterior ao
+  1.24.0) e manda junto com a foto: a Mesa do Mestre avisa quem precisa
+  recarregar.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
 para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — isso
 é o roteiro de teste com o Foundry aberto.
+
+`node qa/ordem-simulada.mjs "$PWD"` (~25 s, fora do CI): o lado do GM da ordem
+do combate com um Foundry de mentira (os ganchos, o `fetch` e os relógios de
+verdade).
 
 ## Files
 
@@ -297,6 +336,7 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 - `scripts/settings.js` — settings + status menu registration.
 - `scripts/equip-sync.js` — the way back to the Companion (estado, exclusão, item novo).
 - `scripts/moedas-sync.js` — the currency both ways (v1.9.0).
+- `scripts/ordem.js` / `scripts/ordem-foundry.js` — the combat order to the Companion, the turn and focus commands (v1.24.0); `scripts/versao.js` — this code's version, stamped by the release.
 - `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`); skill checks for the context soundtrack (v1.22.0, `testeDaMensagem` in `scripts/combate.js`).
 - `scripts/iniciativa.js` / `scripts/iniciativa-foundry.js` — the spoken initiative (v1.23.0): the scene list, opening the combat, the player's roll prompt, rolling via the Companion.
 - `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).

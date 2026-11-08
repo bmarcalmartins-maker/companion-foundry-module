@@ -7,6 +7,7 @@ import { registerMoedasSync } from "./moedas-sync.js";
 import { registerCombateSync } from "./combate-sync.js";
 import { registerMagiaFalada } from "./magia-falada.js";
 import { registerIniciativaQuery, registerIniciativaSync } from "./iniciativa-foundry.js";
+import { avisarCodigoVelho, registerOrdemSync, registerVersaoQuery } from "./ordem-foundry.js";
 import { registerMusica } from "./trilhas-foundry.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 import { auditar } from "./auditoria-foundry.js";
@@ -26,6 +27,9 @@ Hooks.once("init", () => {
   // v1.23.0: a iniciativa falada. Em TODO navegador: a janela "Rolar
   // iniciativa?" do jogador e a marca "rolado pelo Companion" (iniciativa-foundry.js).
   registerIniciativaQuery();
+  // v1.24.0: a versão DESTE código, para o GM saber quem roda código velho do
+  // cache (ordem-foundry.js).
+  registerVersaoQuery();
   console.log(`${MODULE_ID} | initialized`);
 });
 
@@ -35,6 +39,9 @@ function souOGmAtivo() {
 }
 
 Hooks.once("ready", async () => {
+  // v1.24.0: em TODO navegador, o código velho do cache (4 h) avisa na tela.
+  avisarCodigoVelho();
+
   // Only the GM holds the bridge connection — it's the only client allowed to
   // create world actors, and a single connection avoids duplicate writes.
   if (!game.user.isGM) return;
@@ -122,4 +129,7 @@ Hooks.once("ready", async () => {
   // v1.23.0: a iniciativa falada: a seleção com o cartão aberto, quem rolou e
   // o combate apagado vão ao Companion (iniciativa-foundry.js).
   registerIniciativaSync();
+  // v1.24.0: a ordem do combate (a foto, a cada mudança e a cada 30 s) vai ao
+  // Companion (ordem-foundry.js).
+  registerOrdemSync();
 });
