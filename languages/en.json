@@ -44,5 +44,8 @@
   "CFB.Iniciativa.Rolar": "Roll",
   "CFB.Iniciativa.AgoraNao": "Not now",
   "CFB.Iniciativa.RoladoPeloCompanion": "{nome} rolls for initiative — rolled via the Companion",
-  "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rolls for initiative — rolled via the Companion (by the GM: the player is not in Foundry)"
+  "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rolls for initiative — rolled via the Companion (by the GM: the player is not in Foundry)",
+  "CFB.Settings.Ordem.Name": "Combat order to the Companion",
+  "CFB.Settings.Ordem.Hint": "Sends the Companion the order of the combat started on the active scene (whose turn, the round, hit points and who is hidden), for the GM's and the players' tables. Players never receive hit points or hidden combatants.",
+  "CFB.Versao.Recarregue": "The installed Companion Foundry Bridge module is {servidor}, but this browser is still running the cached {codigo} code. Reload the page with Ctrl+Shift+R."
 }

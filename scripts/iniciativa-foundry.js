@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./settings.js";
 import { isReportingGm, postInbound } from "./equip-sync.js";
 import { depoisDoEnvio } from "./combate.js";
+import { comandoDaOrdem } from "./ordem-foundry.js";
 import {
   QUERY_ROLAR_INICIATIVA,
   VIGIA_MS,
@@ -169,6 +170,12 @@ export async function comandoDeCombate(payload) {
     case "parar":
       pararDeVigiar(payload.rodada_id);
       return { parado: true };
+    // v1.24.0, A ORDEM DO COMBATE (ordem-foundry.js): o "Próximo turno", o
+    // "Turno anterior" e o "Selecionar" do Mestre no Companion.
+    case "proximo":
+    case "anterior":
+    case "focar":
+      return comandoDaOrdem(payload);
     default:
       throw new Error(`acao_desconhecida: ${payload?.acao}`);
   }

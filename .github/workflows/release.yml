@@ -58,6 +58,23 @@ jobs:
             fs.writeFileSync("module.json", JSON.stringify(m, null, 2) + "\n");
           '
 
+      - name: Carimbar a versão no código
+        # v1.24.0: o código sabe a própria versão (scripts/versao.js) para o
+        # navegador com o código velho no cache (o Foundry guarda 4 h) avisar
+        # "recarregue com Ctrl+Shift+R". Para se não achar a linha.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "scripts/versao.js";
+            const s = fs.readFileSync(p, "utf8");
+            const re = /export const VERSAO_DO_CODIGO = "[^"]*";/;
+            if (!re.test(s)) { console.error("não achei VERSAO_DO_CODIGO em " + p); process.exit(1); }
+            fs.writeFileSync(p, s.replace(re, `export const VERSAO_DO_CODIGO = "${process.env.VERSION}";`));
+          '
+          grep -n "export const VERSAO_DO_CODIGO" scripts/versao.js
+
       - name: Montar module.zip
         # module.json fica na raiz do zip (formato esperado pelo instalador do Foundry).
         run: |

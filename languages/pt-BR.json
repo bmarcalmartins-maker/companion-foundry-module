@@ -44,5 +44,8 @@
   "CFB.Iniciativa.Rolar": "Rolar",
   "CFB.Iniciativa.AgoraNao": "Agora não",
   "CFB.Iniciativa.RoladoPeloCompanion": "{nome} rola a iniciativa — rolado pelo Companion",
-  "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rola a iniciativa — rolado pelo Companion (pelo Mestre: o jogador não está no Foundry)"
+  "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rola a iniciativa — rolado pelo Companion (pelo Mestre: o jogador não está no Foundry)",
+  "CFB.Settings.Ordem.Name": "A ordem do combate no Companion",
+  "CFB.Settings.Ordem.Hint": "Manda ao Companion a ordem do combate começado na cena ativa (a vez, a rodada, a vida e quem está escondido), para a Mesa do Mestre e a dos jogadores. O jogador nunca recebe a vida nem os escondidos.",
+  "CFB.Versao.Recarregue": "O módulo Companion Foundry Bridge instalado é o {servidor}, mas este navegador ainda roda o código {codigo}, guardado no cache. Recarregue a página com Ctrl+Shift+R."
 }

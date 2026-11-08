@@ -98,7 +98,8 @@ const PCS = [
 
 test("o nome da pergunta tem o prefixo do módulo (CONFIG.queries)", () => {
   assert.ok(QUERY_ROLAR_INICIATIVA.startsWith(`${moduleJson.id}.`), QUERY_ROLAR_INICIATIVA);
-  assert.equal(moduleJson.version, "1.23.0");
+  // o número exato é conferido contra o código em ordem.test.js (v1.24.0)
+  assert.match(moduleJson.version, /^\d+\.\d+\.\d+$/);
 });
 
 test("sem cena ativa: o cartão diz", async () => {
