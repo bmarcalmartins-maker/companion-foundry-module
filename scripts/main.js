@@ -9,6 +9,7 @@ import { registerMagiaFalada } from "./magia-falada.js";
 import { registerIniciativaQuery, registerIniciativaSync } from "./iniciativa-foundry.js";
 import { avisarCodigoVelho, registerOrdemSync, registerVersaoQuery } from "./ordem-foundry.js";
 import { registerMusica } from "./trilhas-foundry.js";
+import { registerSaqueQueries, registerSaqueSync } from "./saque-foundry.js";
 import { registrarRegrasDeCura } from "./efeitos-dnd5e.js";
 import { auditar } from "./auditoria-foundry.js";
 import { agendarCanonico, aplicarCanonico, desfazerCanonico } from "./canonico-foundry.js";
@@ -30,6 +31,9 @@ Hooks.once("init", () => {
   // v1.24.0: a versão DESTE código, para o GM saber quem roda código velho do
   // cache (ordem-foundry.js).
   registerVersaoQuery();
+  // v1.25.0: o saque. Em TODO navegador: a janela de pergaminho do jogador, o
+  // "Pegar"/"Deixar" que volta ao GM e os botões dos cartões (saque-foundry.js).
+  registerSaqueQueries();
   console.log(`${MODULE_ID} | initialized`);
 });
 
@@ -132,4 +136,7 @@ Hooks.once("ready", async () => {
   // v1.24.0: a ordem do combate (a foto, a cada mudança e a cada 30 s) vai ao
   // Companion (ordem-foundry.js).
   registerOrdemSync();
+  // v1.25.0: o saque: o NPC derrotado e a Investigação da revista vão ao
+  // Companion (saque-foundry.js). Cada gancho confere na hora o GM ATIVO.
+  registerSaqueSync();
 });

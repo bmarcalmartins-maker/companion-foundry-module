@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>O saque: a janela de pergaminho, fora do Foundry</title>
+<!--
+  A PROVA FORA DO FOUNDRY (v1.25.0). Carrega o CSS de verdade do módulo
+  (styles/saque.css) e monta o miolo com a função de verdade (htmlDaJanela, de
+  scripts/saque.js). O que é IMITAÇÃO, e por isso não prova nada sobre o
+  Foundry: a moldura em volta (as classes .application, .window-header e
+  .window-content que a ApplicationV2 gera) e o estilo dela, abaixo.
+  Abrir por http (qa/saque/capturar.mjs serve a pasta do módulo).
+-->
+<link rel="stylesheet" href="../../styles/saque.css">
+<style>
+  /* imitação do Foundry: só o bastante para a janela ter onde morar */
+  html, body { margin: 0; min-height: 100%; }
+  body { background: #1c1b22; color: #ddd; font-family: sans-serif; padding: 8px; box-sizing: border-box; }
+  *, *::before, *::after { box-sizing: border-box; }
+  .application { position: relative; margin: 0 auto; width: 600px; border: 1px solid #555; background: #2b2b33; box-shadow: 0 0 12px #000; }
+  .window-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 14px; }
+  .window-header .window-title { flex: 1; margin: 0; font-size: 14px; font-weight: 400; }
+  .window-content { padding: 1rem; }
+</style>
+</head>
+<body>
+<div id="cfb-saque-exemplo" class="application companion-foundry-bridge cfb-saque-app">
+  <header class="window-header">
+    <h1 class="window-title">O saque</h1>
+    <span aria-hidden="true">✕</span>
+  </header>
+  <section class="window-content cfb-saque-perg" id="miolo"></section>
+</div>
+<script type="module">
+  import { dadosDaJanela, depoisDaDecisao, estadoInicial, htmlDaJanela } from "../../scripts/saque.js";
+
+  // O que a op "revelada" manda (a visão do JOGADOR), com os cinco casos.
+  const payload = {
+    corpo: { id: "c1", nome: "Goblin Batedor" },
+    pc: { id: "p1", nome: "Guldrum" },
+    revista: { id: "r1" },
+    achados: [
+      { id: "a1", tipo: "moedas", quantidade: 1, moedas: { pp: 0, gp: 3, ep: 0, sp: 8, cp: 0 }, decisao: null, pego: false },
+      {
+        id: "a2", tipo: "item", quantidade: 1, nome: "Adaga do Corvo", identificado: true, raridade: "raro",
+        tipo_item: "Arma", subtipo: "Adaga", img: "qa/saque/exemplo-item.svg", imagem_url: null,
+        dano: "1d4 + 1", tipo_dano: "perfurante", ca: null, alcance: "6/18 m", propriedades: ["Acuidade", "Leve", "Arremesso"],
+        peso: "0,5 kg", sintonia: true,
+        descricao: "Uma adaga de lâmina escura, com um corvo gravado no pomo.\nEnquanto sintonizado, você enxerga na penumbra como se fosse luz plena.",
+        decisao: null, pego: false,
+      },
+      {
+        id: "a3", tipo: "item", quantidade: 2, nome: "Ração de viagem", identificado: true, raridade: "comum",
+        tipo_item: "Consumível", subtipo: "Comida", img: null, imagem_url: null, propriedades: { perecivel: true, dias: 2 },
+        peso: 1, descricao: "Carne seca, pão duro e frutas secas.", decisao: null, pego: false,
+      },
+      {
+        id: "a4", tipo: "item", quantidade: 1, nome: "Pacote lacrado", identificado: false,
+        tipo_item: "Objeto", img: "qa/saque/exemplo-item.svg", imagem_url: null,
+        descricao: "Um pacote de couro, fechado com cera vermelha. Algo chacoalha dentro.", decisao: null, pego: false,
+      },
+      {
+        id: "a5", tipo: "item", quantidade: 1, nome: "Anel de Sinete Antigo", identificado: true, raridade: "lendario",
+        tipo_item: "Joia", subtipo: "Anel", propriedades: "Mágico", descricao: "O brasão de uma casa esquecida.", decisao: "pegou", pego: true,
+      },
+      { id: "a6", tipo: "item", quantidade: 1, nome: "Elmo amassado", identificado: true, raridade: "incomum", tipo_item: "Armadura", ca: 1, decisao: null, pego: false },
+      { id: "a7", tipo: "item", quantidade: 1, nome: "Frasco púrpura", identificado: true, raridade: "muito_raro", tipo_item: "Poção", decisao: "deixou", pego: false },
+    ],
+  };
+  const dados = dadosDaJanela(payload);
+  const p = new URLSearchParams(location.search);
+  let estado = estadoInicial();
+  // ?estado=erro: uma linha com a frase de recusa; ?estado=espera: botões desligados;
+  // ?estado=tudo: tudo decidido, com o rodapé.
+  if (p.get("estado") === "erro") estado.erros.a3 = "Este achado já foi decidido por outra pessoa.";
+  if (p.get("estado") === "espera") estado.esperando.a2 = true;
+  if (p.get("estado") === "tudo") for (const a of dados.achados) estado.decisoes[a.id] = "pegou";
+  const miolo = document.getElementById("miolo");
+  const rota = (c) => `../../${c}`;
+  const desenhar = () => {
+    const div = document.createElement("div");
+    div.innerHTML = htmlDaJanela(dados, estado, { rota });
+    miolo.replaceChildren(div);
+  };
+  // os cliques, como a janela de verdade faria (sem Mestre: responde ok na hora)
+  miolo.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-action]");
+    if (!b || !b.dataset.achado) return;
+    estado = depoisDaDecisao(estado, b.dataset.achado, b.dataset.action === "pegar", { ok: true });
+    desenhar();
+  });
+  desenhar();
+  window.__pronto = true;
+</script>
+</body>
+</html>

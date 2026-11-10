@@ -47,5 +47,7 @@
   "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rolls for initiative — rolled via the Companion (by the GM: the player is not in Foundry)",
   "CFB.Settings.Ordem.Name": "Combat order to the Companion",
   "CFB.Settings.Ordem.Hint": "Sends the Companion the order of the combat started on the active scene (whose turn, the round, hit points and who is hidden), for the GM's and the players' tables. Players never receive hit points or hidden combatants.",
+  "CFB.Settings.Saque.Name": "Looting in the Companion",
+  "CFB.Settings.Saque.Hint": "Tells the Companion when an enemy (NPC) is defeated, so the GM can let a character search the body; shows the loot cards in chat and, to the player, the window with what was found. Only while a session is running in the Companion. Off: nothing is sent.",
   "CFB.Versao.Recarregue": "The installed Companion Foundry Bridge module is {servidor}, but this browser is still running the cached {codigo} code. Reload the page with Ctrl+Shift+R."
 }

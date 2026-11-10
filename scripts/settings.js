@@ -107,6 +107,18 @@ export function registerSettings() {
     default: true,
   });
 
+  // v1.25.0: O SAQUE (saque-foundry.js): o NPC derrotado vira um corpo no
+  // Companion, e os cartões e a janela do saque aparecem aqui. Desligado, nada
+  // sai e os comandos do saque são recusados ("desligado").
+  game.settings.register(MODULE_ID, "saqueAoCompanion", {
+    name: "CFB.Settings.Saque.Name",
+    hint: "CFB.Settings.Saque.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
   // v1.19.0: a música do Companion. A pasta (dentro de Data) onde moram os
   // arquivos da biblioteca de sons do Companion: o caminho de cada faixa é
   // relativo a ela ("mesa/tumba.mp3" → "sounds/mesa/tumba.mp3").

@@ -1,0 +1,463 @@
+/*!
+ * Fontes: Solbera, CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+ * Mr Eaves Small Caps e Scaly Sans (Remake), do pacote npm solbera-dnd-fonts 1.0.2
+ * (https://github.com/prantlf/solbera-dnd-fonts), com as correções de Ryrok, Ners
+ * e LUCASTUCIOUS. Os .woff2 vão sem modificação; licença e LEIA-ME em
+ * assets/fontes/LICENSE.txt e assets/fontes/LEIA-ME.txt.
+ */
+
+/*
+ * O SAQUE (v1.25.0): a janela de pergaminho do jogador e os cartões do chat.
+ *
+ * A JANELA É O MESMO PERGAMINHO DO COMPANION. As duas imagens
+ * (assets/pergaminho/borda.webp e papel.webp) e as fontes (assets/fontes/)
+ * são cópias byte a byte das do Companion (packages/shared/src/assets/
+ * pergaminho e src/fontes), e a montagem repete a de
+ * packages/shared/src/janelas/pergaminho.css:
+ * - a moldura é a border-image da borda.webp em 9 fatias (corte de 200 px),
+ *   com `round`; a borda do CSS tem 75% da moldura, transparente;
+ * - o papel é o fundo em azulejo, só na caixa de dentro da borda
+ *   (padding-box), com o lado = moldura x 6,27;
+ * - a moldura tem 56 px; até 1219 px de largura, 32 px;
+ * - quem rola é a caixa de dentro: a moldura não rola junto.
+ * As fontes repetem src/fontes/fontes.css (os mesmos size-adjust e overrides).
+ *
+ * TODO seletor começa por .cfb-saque- (nada vaza para o resto do Foundry). As
+ * duas famílias de fonte são declaradas com os nomes de sempre ("Mr Eaves
+ * Small Caps", "Scaly Sans") e só são USADAS dentro de .cfb-saque-perg.
+ *
+ * AS TINTAS (do Companion, pergaminho-conteudo.css e janelas.css) e o
+ * contraste de cada uma sobre o PIOR ponto do papel envelhecido, #c79b5a
+ * (WCAG 2: texto normal >= 4,5:1; texto grande e controles >= 3:1).
+ * Calculado pela fórmula da luminância relativa e medido de novo, na página,
+ * por qa/saque/capturar.mjs:
+ *   texto            #120c07   7,64:1
+ *   texto secundário #332417   5,88:1
+ *   título e rótulo  #511200   5,75:1
+ *   erro             #5c1010   5,38:1
+ *   raridade comum   #332417   5,88:1
+ *   raridade incomum #0b3a1e   5,04:1
+ *   raridade rara    #0c2f63   5,16:1
+ *   muito rara       #3f1470   5,35:1
+ *   lendária         #5a2600   4,83:1
+ *   botão "Pegar": fundo #511200 (5,75:1 contra o papel), letra #f6e7c6
+ *                  (11,95:1 contra o fundo do botão)
+ *   botão "Deixar": letra #24190f (6,77:1 no papel), borda #332417 (5,88:1)
+ *   foco: contorno #120c07 (7,64:1), 3 px, afastado 2 px
+ *
+ * HIPÓTESE (sem teste no Foundry): as classes que a ApplicationV2 põe em volta
+ * (.application, .window-header, .window-content). A prova fora do Foundry
+ * (qa/saque/janela.html) imita essa estrutura.
+ */
+
+@font-face {
+  font-family: "Mr Eaves Small Caps";
+  src: url("../assets/fontes/mr-eaves-small-caps.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  size-adjust: 105.5%;
+  ascent-override: 92.7%;
+  descent-override: 24.17%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Scaly Sans";
+  src: url("../assets/fontes/scaly-sans.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 550;
+  font-display: swap;
+  size-adjust: 107%;
+  ascent-override: 93.46%;
+  descent-override: 28.32%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Scaly Sans";
+  src: url("../assets/fontes/scaly-sans-bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 551 900;
+  font-display: swap;
+  size-adjust: 107%;
+  ascent-override: 93.46%;
+  descent-override: 28.32%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Scaly Sans";
+  src: url("../assets/fontes/scaly-sans-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 100 550;
+  font-display: swap;
+  size-adjust: 107%;
+  ascent-override: 93.46%;
+  descent-override: 28.32%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Scaly Sans";
+  src: url("../assets/fontes/scaly-sans-bold-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 551 900;
+  font-display: swap;
+  size-adjust: 107%;
+  ascent-override: 93.46%;
+  descent-override: 28.32%;
+  line-gap-override: 0%;
+}
+
+/* ── 1. A janela ──────────────────────────────────────────────────────── */
+
+.cfb-saque-app {
+  --cfb-saque-moldura: 56px;
+  --cfb-saque-fundo: #e5c58d; /* a cor média do papel, enquanto a imagem carrega */
+  --cfb-saque-texto: #120c07;
+  --cfb-saque-texto-2: #332417;
+  --cfb-saque-tinta: #511200;
+  --cfb-saque-filete: #9b2818; /* só desenho */
+  --cfb-saque-erro: #5c1010;
+  /* a janela do Foundry some: quem aparece é a folha */
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 1219px) {
+  .cfb-saque-app {
+    --cfb-saque-moldura: 32px;
+  }
+}
+
+/* A barra de título (para arrastar e fechar): uma faixa escura e discreta. */
+.cfb-saque-app > .window-header {
+  flex: 0 0 auto;
+  background: rgb(18 12 7 / 0.92);
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  color: #f6e7c6;
+}
+
+.cfb-saque-perg {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px 10px 10px;
+  border-style: solid;
+  border-color: transparent;
+  border-width: calc(var(--cfb-saque-moldura) * 0.75);
+  border-radius: 0;
+  border-image-source: url("../assets/pergaminho/borda.webp");
+  border-image-slice: 200;
+  border-image-width: var(--cfb-saque-moldura);
+  border-image-outset: 0;
+  border-image-repeat: round;
+  background-color: var(--cfb-saque-fundo);
+  background-image: url("../assets/pergaminho/papel.webp");
+  background-repeat: repeat;
+  background-size: calc(var(--cfb-saque-moldura) * 6.27) auto;
+  background-position: 0 0;
+  background-origin: padding-box;
+  background-clip: padding-box;
+  box-shadow: none;
+  scrollbar-color: rgb(130 32 0 / 0.45) transparent;
+  scrollbar-width: thin;
+  color: var(--cfb-saque-texto);
+  font-family: "Scaly Sans", "Signika", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-align: left;
+}
+
+@media (max-width: 1219px) {
+  .cfb-saque-perg {
+    padding: 4px 6px 8px;
+  }
+}
+
+/* ── 2. O miolo ───────────────────────────────────────────────────────── */
+
+.cfb-saque-perg .cfb-saque-folha {
+  min-width: 0;
+}
+
+.cfb-saque-perg .cfb-saque-titulo {
+  margin: 0 0 10px;
+  padding: 0 0 6px;
+  border: 0;
+  border-bottom: 2px solid var(--cfb-saque-filete);
+  color: var(--cfb-saque-tinta);
+  font-family: "Mr Eaves Small Caps", "Scaly Sans", serif;
+  font-size: 27px;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-shadow: none;
+  overflow-wrap: anywhere;
+}
+
+.cfb-saque-perg .cfb-saque-achados {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cfb-saque-perg .cfb-saque-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid rgb(97 22 0 / 0.35);
+}
+.cfb-saque-perg .cfb-saque-linha:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.cfb-saque-perg .cfb-saque-linha--com-imagem {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.cfb-saque-perg .cfb-saque-imagem {
+  display: block;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border: 1px solid rgb(97 22 0 / 0.45);
+  border-radius: 4px;
+  background: rgb(110 75 40 / 0.13);
+}
+
+.cfb-saque-perg .cfb-saque-corpo {
+  min-width: 0;
+}
+
+.cfb-saque-perg .cfb-saque-nome {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--cfb-saque-tinta);
+  font-family: "Mr Eaves Small Caps", "Scaly Sans", serif;
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-transform: none;
+  text-shadow: none;
+  overflow-wrap: anywhere;
+}
+
+.cfb-saque-perg .cfb-saque-meta {
+  margin: 1px 0 0;
+  color: var(--cfb-saque-texto-2);
+  font-size: 15px;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.cfb-saque-perg .cfb-saque-raridade {
+  font-style: normal;
+  font-weight: 700;
+}
+.cfb-saque-perg .cfb-saque-raridade--comum {
+  color: #332417;
+}
+.cfb-saque-perg .cfb-saque-raridade--incomum {
+  color: #0b3a1e;
+}
+.cfb-saque-perg .cfb-saque-raridade--raro {
+  color: #0c2f63;
+}
+.cfb-saque-perg .cfb-saque-raridade--muito-raro {
+  color: #3f1470;
+}
+.cfb-saque-perg .cfb-saque-raridade--lendario {
+  color: #5a2600;
+}
+.cfb-saque-perg .cfb-saque-nao-identificado {
+  color: var(--cfb-saque-texto-2);
+  font-weight: 700;
+}
+
+.cfb-saque-perg .cfb-saque-fatos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.cfb-saque-perg .cfb-saque-fatos > div {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+.cfb-saque-perg .cfb-saque-fatos dt {
+  margin: 0;
+  color: var(--cfb-saque-tinta);
+  font-weight: 700;
+}
+.cfb-saque-perg .cfb-saque-fatos dd {
+  margin: 0;
+  color: var(--cfb-saque-texto);
+  overflow-wrap: anywhere;
+}
+
+.cfb-saque-perg .cfb-saque-sintonia {
+  margin: 4px 0 0;
+  color: var(--cfb-saque-texto-2);
+  font-size: 15px;
+  font-style: italic;
+}
+
+.cfb-saque-perg .cfb-saque-descricao {
+  margin: 6px 0 0;
+  color: var(--cfb-saque-texto);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.cfb-saque-perg .cfb-saque-vazio,
+.cfb-saque-perg .cfb-saque-decidido {
+  margin: 8px 0 0;
+  color: var(--cfb-saque-texto-2);
+  font-style: italic;
+}
+
+.cfb-saque-perg .cfb-saque-erro {
+  margin: 6px 0 0;
+  color: var(--cfb-saque-erro);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.cfb-saque-perg .cfb-saque-rodape {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 10px 0 0;
+  border-top: 2px solid var(--cfb-saque-filete);
+}
+.cfb-saque-perg .cfb-saque-rodape .cfb-saque-decidido {
+  margin: 0;
+}
+
+/* ── 3. Os botões da janela ───────────────────────────────────────────── */
+
+.cfb-saque-perg .cfb-saque-botoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.cfb-saque-perg .cfb-saque-botao {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 96px;
+  min-height: 36px;
+  height: auto;
+  margin: 0;
+  padding: 4px 16px;
+  border: 1px solid #332417;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: #24190f;
+  font-family: "Scaly Sans", "Signika", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: none;
+  cursor: pointer;
+}
+.cfb-saque-perg .cfb-saque-botao--pegar {
+  border-color: #2b0900;
+  background: #511200;
+  color: #f6e7c6;
+}
+.cfb-saque-perg .cfb-saque-botao:hover:not(:disabled) {
+  background: rgb(110 75 40 / 0.13);
+  box-shadow: none;
+}
+.cfb-saque-perg .cfb-saque-botao--pegar:hover:not(:disabled) {
+  background: #3d0d00;
+}
+.cfb-saque-perg .cfb-saque-botao:focus {
+  box-shadow: none;
+}
+.cfb-saque-perg .cfb-saque-botao:focus-visible {
+  outline: 3px solid #120c07;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.cfb-saque-perg .cfb-saque-botao:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* No toque, o alvo tem 44 px. */
+@media (pointer: coarse) {
+  .cfb-saque-perg .cfb-saque-botao {
+    min-height: 44px;
+    min-width: 108px;
+  }
+}
+
+/* Tela estreita: a imagem menor, os botões dividem a linha. */
+@media (max-width: 480px) {
+  .cfb-saque-perg .cfb-saque-linha--com-imagem {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .cfb-saque-perg .cfb-saque-imagem {
+    width: 52px;
+    height: 52px;
+  }
+  .cfb-saque-perg .cfb-saque-titulo {
+    font-size: 24px;
+  }
+  .cfb-saque-perg .cfb-saque-botoes .cfb-saque-botao {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+/* ── 4. Os cartões do chat ────────────────────────────────────────────────
+ * Ficam com a cara do chat do Foundry (as cores são as dele): só o arranjo. */
+
+.cfb-saque-cartao p {
+  margin: 0 0 6px;
+}
+.cfb-saque-cartao .cfb-saque-aviso {
+  font-style: italic;
+}
+.cfb-saque-cartao .cfb-saque-lista {
+  margin: 0 0 6px;
+  padding-left: 1.2em;
+}
+.cfb-saque-cartao .cfb-saque-fora {
+  font-weight: 700;
+}
+.cfb-saque-cartao .cfb-saque-botoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cfb-saque-cartao .cfb-saque-botao {
+  flex: 1 1 auto;
+  width: auto;
+  min-height: 30px;
+}
+@media (pointer: coarse) {
+  .cfb-saque-cartao .cfb-saque-botao {
+    min-height: 44px;
+  }
+}

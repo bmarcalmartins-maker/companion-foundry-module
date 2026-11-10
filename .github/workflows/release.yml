@@ -77,11 +77,14 @@ jobs:
 
       - name: Montar module.zip
         # module.json fica na raiz do zip (formato esperado pelo instalador do Foundry).
+        # v1.25.0: `assets` (o pergaminho e as fontes da janela do saque, com a
+        # licença das fontes) vai junto; styles/saque.css aponta para lá.
         run: |
           zip -r module.zip \
             module.json \
             scripts \
             styles \
+            assets \
             languages \
             README.md
 
