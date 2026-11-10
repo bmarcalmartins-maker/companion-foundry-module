@@ -47,5 +47,7 @@
   "CFB.Iniciativa.RoladoPeloCompanionMestre": "{nome} rola a iniciativa — rolado pelo Companion (pelo Mestre: o jogador não está no Foundry)",
   "CFB.Settings.Ordem.Name": "A ordem do combate no Companion",
   "CFB.Settings.Ordem.Hint": "Manda ao Companion a ordem do combate começado na cena ativa (a vez, a rodada, a vida e quem está escondido), para a Mesa do Mestre e a dos jogadores. O jogador nunca recebe a vida nem os escondidos.",
+  "CFB.Settings.Saque.Name": "O saque no Companion",
+  "CFB.Settings.Saque.Hint": "Avisa o Companion quando um inimigo (NPC) é derrotado, para o Mestre liberar a revista do corpo; mostra no chat os cartões do saque e, ao jogador, a janela com o que ele achou. Só com a sessão em andamento no Companion. Desligado, nada sai.",
   "CFB.Versao.Recarregue": "O módulo Companion Foundry Bridge instalado é o {servidor}, mas este navegador ainda roda o código {codigo}, guardado no cache. Recarregue a página com Ctrl+Shift+R."
 }

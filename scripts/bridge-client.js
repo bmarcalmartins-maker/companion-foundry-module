@@ -11,6 +11,7 @@ import { readActor } from "./actor-read.js";
 import { pedirMagia } from "./magia-falada.js";
 import { receberComandoDeAudio } from "./trilhas-foundry.js";
 import { comandoDeCombate } from "./iniciativa-foundry.js";
+import { receberComandoDeSaque } from "./saque-foundry.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
 import { criarFila } from "./fila-por-ator.js";
 import { aplicarMoedasDoCompanion } from "./moedas-sync.js";
@@ -279,6 +280,13 @@ export class BridgeClient {
         // fila dos atores: mexe no combate, não num ator.
         case "combate.comando":
           result = { data: await comandoDeCombate(payload) };
+          break;
+        // v1.25.0: o saque (saque-foundry.js): o pedido, a revista liberada,
+        // o resultado (só ao GM), o revelado (a janela do jogador) e o fim.
+        // Responde na hora ("recebido"); os cliques voltam pela edge
+        // foundry-saque. Fora da fila dos atores: não mexe em nenhum.
+        case "saque.comando":
+          result = { data: receberComandoDeSaque(payload) };
           break;
         default:
           throw new Error(`unknown action: ${action}`);

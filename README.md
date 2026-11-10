@@ -316,6 +316,34 @@ Mestre e na de cada jogador) e segue o Foundry nos dois sentidos.
   1.24.0) e manda junto com a foto: a Mesa do Mestre avisa quem precisa
   recarregar.
 
+### O saque — desde a 1.25.0 (10/11)
+
+O inimigo derrotado vira um "corpo" no Companion; o Mestre libera a revista
+para UM personagem; o jogador rola Investigação; o Companion sorteia; o Mestre
+vê o resultado e revela; o jogador escolhe o que pega. Toda regra mora no
+banco do Companion: o módulo só avisa e mostra. O contrato inteiro e o que
+ainda é HIPÓTESE (ninguém testou no Foundry de verdade): `docs/SAQUE.md`.
+
+- **Morreu** (só o GM ativo, só ator `npc`; `scripts/saque-foundry.js`): o
+  `dnd5e.damageActor` de PV acima de 0 para 0 ou menos, o `createActiveEffect`
+  com o estado de derrotado (`CONFIG.specialStatusEffects.DEFEATED`) e o
+  `updateCombatant` com `defeated: true`. Cada `actor.uuid` avisa uma vez (dois
+  goblins do mesmo ator são dois corpos). Vai à edge `foundry-saque`
+  (`op: "saque.morreu"`) e vira um cartão no chat, só dos GMs: "<nome> caiu.",
+  um botão por personagem e "Sem saque".
+- **A Investigação** é a NATIVA do dnd5e (`actor.rollSkill`, com o diálogo, a
+  vantagem e os bônus da ficha), pelo botão do cartão sussurrado ao dono do
+  ator. A mensagem leva a flag `saque` com a revista; o GM ativo manda o total
+  (`op: "saque.rolou"`). Essa rolagem fica FORA da música pelo contexto.
+- **O resultado** chega pela ponte (`saque.comando`) e aparece só para os GMs,
+  com "Revelar a <personagem>".
+- **A janela do jogador** (ApplicationV2, aberta pelo GM com `User#query`) é o
+  MESMO pergaminho do Companion (`styles/saque.css`, `assets/pergaminho/`,
+  `assets/fontes/`): as moedas e cada item, com "Pegar" e "Deixar". O clique
+  volta ao GM ativo por `User#query`, e dele à edge. O item não identificado
+  mostra só a fachada.
+- Liga e desliga em "O saque no Companion". Nas flags dos cartões só vão ids.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -325,6 +353,12 @@ para a cola com o WebSocket e os ganchos. Não prova o Foundry de verdade — is
 `node qa/ordem-simulada.mjs "$PWD"` (~25 s, fora do CI): o lado do GM da ordem
 do combate com um Foundry de mentira (os ganchos, o `fetch` e os relógios de
 verdade).
+
+O saque, fora do CI: `node qa/saque/simulado.mjs` (a cola com um Foundry de
+mentira) e `node qa/saque/capturar.mjs` (precisa do Playwright: abre
+`qa/saque/janela.html`, a janela de pergaminho fora do Foundry, fotografa em
+computador, iPhone e iPad e mede o contraste de cada texto, o foco e a
+largura; as fotos ficam em `qa/saque/capturas/`).
 
 ## Files
 
@@ -339,5 +373,18 @@ verdade).
 - `scripts/ordem.js` / `scripts/ordem-foundry.js` — the combat order to the Companion, the turn and focus commands (v1.24.0); `scripts/versao.js` — this code's version, stamped by the release.
 - `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`); skill checks for the context soundtrack (v1.22.0, `testeDaMensagem` in `scripts/combate.js`).
 - `scripts/iniciativa.js` / `scripts/iniciativa-foundry.js` — the spoken initiative (v1.23.0): the scene list, opening the combat, the player's roll prompt, rolling via the Companion.
+- `scripts/saque.js` / `scripts/saque-foundry.js` — looting (v1.25.0): the three death signals, the chat cards, the Investigation roll, the player's parchment window; `styles/saque.css`, `assets/pergaminho/`, `assets/fontes/`.
 - `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).
 - `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.
+
+## Créditos
+
+- **Fontes** (`assets/fontes/`): Mr Eaves Small Caps e Scaly Sans (Remake), de
+  **Solbera**, com as correções de Ryrok, Ners e LUCASTUCIOUS, do pacote npm
+  `solbera-dnd-fonts` 1.0.2. Licença **CC BY-SA 4.0**
+  (https://creativecommons.org/licenses/by-sa/4.0/); os `.woff2` vão sem
+  modificação, com o texto da licença em `assets/fontes/LICENSE.txt` e a
+  origem em `assets/fontes/LEIA-ME.txt`. Usadas só na janela do saque.
+- **Pergaminho** (`assets/pergaminho/`): as mesmas duas imagens da janela de
+  pergaminho do Companion (`packages/shared/src/assets/pergaminho/`), copiadas
+  byte a byte.

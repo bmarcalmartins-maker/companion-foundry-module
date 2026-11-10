@@ -95,6 +95,9 @@ export function depoisDoEnvio(res) {
 export function testeDaMensagem(msg, { tipoDoAtor } = {}) {
   const roll = msg?.flags?.dnd5e?.roll;
   if (roll?.type !== "skill" || !msg?.id) return null;
+  // v1.25.0 (O SAQUE): a Investigação de uma revista leva a nossa flag
+  // (saque.js, rolagemDoSaque) e fica FORA da música: não é o grupo investigando.
+  if (msg.flags?.["companion-foundry-bridge"]?.saque) return null;
   const pericia = typeof roll.skillId === "string" ? roll.skillId.trim() : "";
   if (!/^[a-z]{3}$/.test(pericia)) return null;
   const actorId = msg.speaker?.actor;

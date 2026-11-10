@@ -1,0 +1,75 @@
+FONTES DO APP DO JOGADOR E DO APP DO MESTRE
+============================================
+
+Fontes: Solbera, CC BY-SA 4.0.
+
+Os dois apps usam duas fontes que imitam as dos livros de Dungeons & Dragons
+5ª edição:
+
+- Mr Eaves Small Caps (Remake), cópia gratuita da Mrs Eaves Small Caps:
+  títulos.
+- Scaly Sans (Remake), cópia gratuita da Scala Sans: o resto do texto.
+  Tem Regular, Bold, Italic e Bold Italic.
+
+
+AUTOR E ORIGEM
+--------------
+
+- Autor: Solbera, que publicou as fontes em
+  https://www.reddit.com/r/UnearthedArcana/comments/3vpphx/5e_font_package_embeddable_cc_edition/
+- Correções:
+  - Ryrok:
+    https://www.reddit.com/r/UnearthedArcana/comments/4loka0/fixed_versions_of_solberas_fonts/
+  - Ners, as versões "Remake":
+    https://www.reddit.com/r/UnearthedArcana/comments/71wzc2/new_indesign_template_and_open_source_fonts/
+  - LUCASTUCIOUS: https://github.com/lucastucious
+- De onde vieram estes arquivos: o pacote npm solbera-dnd-fonts, versão
+  1.0.2, pasta dist/ (https://github.com/prantlf/solbera-dnd-fonts).
+  - O pacote baixado é o publicado: sha1
+    48343cb7fca0954bc71a03a0fa4d9894db8f84d6, conferido com o registro do npm
+    em 11/10/2026.
+  - O package.json do pacote diz MIT, mas isso vale para o empacotamento.
+    As fontes são CC BY-SA 4.0, como dizem o LICENSE e o README do pacote.
+
+
+LICENÇA
+-------
+
+Creative Commons Atribuição-CompartilhaIgual 4.0 Internacional (CC BY-SA 4.0).
+
+- Texto completo: LICENSE.txt, nesta pasta.
+- Na internet: https://creativecommons.org/licenses/by-sa/4.0/
+- A licença pede crédito ao autor, um link para a licença e que quem
+  modificar as fontes as distribua sob a mesma licença.
+
+
+OS ARQUIVOS NÃO FORAM MODIFICADOS
+---------------------------------
+
+Só o nome mudou, para caber num endereço da web. O conteúdo é igual byte a
+byte ao do pacote (sha256):
+
+  mr-eaves-small-caps.woff2      = "Mr Eaves Small Caps.woff2"
+    6e43cc74f174615d08571c6d0b4f8bdde4307bc476b2525b667f68d0da850ee3
+  scaly-sans.woff2               = "Scaly Sans.woff2"
+    53a87a7aa04efcea69457deb781ad4b5e899846a8e8d2c5ff90e13107dd07324
+  scaly-sans-bold.woff2          = "Scaly Sans Bold.woff2"
+    dfbc7df1287306547c14dffb3d32823e3fd2ea229aadbefbb26c3b45350686e4
+  scaly-sans-italic.woff2        = "Scaly Sans Italic.woff2"
+    96e7361180bc7c151b8a0776f8f6479f784629e00a89576758ad5dcc757a02fb
+  scaly-sans-bold-italic.woff2   = "Scaly Sans Bold Italic.woff2"
+    95dc6a32891b92775ad74ac43b20bce268138d0eff59be44d9a8499264751032
+  LICENSE.txt                    = "LICENSE"
+    9348ddfd44da5a127c59141981954746a860ec8e03e0412cf3af7134af0f97e2
+
+O tamanho em que elas aparecem nas telas é ajustado pelo CSS (fontes.css,
+size-adjust), sem mexer nos arquivos.
+
+
+ONDE FICAM
+----------
+
+- No código: packages/shared/src/fontes/.
+- No site: o build de cada app põe os .woff2 junto dos outros arquivos dele
+  (/play/assets/ e /dm/assets/, com um código no nome). Este LEIA-ME e o
+  LICENSE.txt ficam em /play/fontes/ e /dm/fontes/.

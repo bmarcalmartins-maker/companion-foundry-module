@@ -9,4 +9,4 @@
  * versão que o Foundry diz ter instalada (`game.modules`) vem do SERVIDOR; esta
  * vem do CÓDIGO que o navegador carregou. Diferentes = código velho no cache.
  */
-export const VERSAO_DO_CODIGO = "1.24.0";
+export const VERSAO_DO_CODIGO = "1.25.0";
