@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>O saque: a janela de pergaminho, fora do Foundry</title>
 <!--
-  A PROVA FORA DO FOUNDRY (v1.25.0). Carrega o CSS de verdade do módulo
+  A PROVA FORA DO FOUNDRY (v1.25.0; a janela enxuta e o achado direto, v1.26.0). Carrega o CSS de verdade do módulo
   (styles/saque.css) e monta o miolo com a função de verdade (htmlDaJanela, de
   scripts/saque.js). O que é IMITAÇÃO, e por isso não prova nada sobre o
   Foundry: a moldura em volta (as classes .application, .window-header e
@@ -35,9 +35,14 @@
 <script type="module">
   import { dadosDaJanela, depoisDaDecisao, estadoInicial, htmlDaJanela } from "../../scripts/saque.js";
 
-  // O que a op "revelada" manda (a visão do JOGADOR), com os cinco casos.
-  const payload = {
-    corpo: { id: "c1", nome: "Goblin Batedor" },
+  // O que a op "revelada" manda (a visão do JOGADOR) desde a v1.26.0: do item,
+  // só id, tipo, quantidade, decisão, nome, identificado, raridade e imagem (a
+  // descrição, só no NÃO identificado: a fachada). O "a2" vem como um Companion
+  // ANTIGO mandaria (dano, propriedades, sintonia, descrição): nada disso
+  // pode aparecer.
+  const p = new URLSearchParams(location.search);
+  const saque = {
+    corpo: { id: "c1", nome: "Goblin Batedor", origem: "foundry" },
     pc: { id: "p1", nome: "Guldrum" },
     revista: { id: "r1" },
     achados: [
@@ -46,30 +51,37 @@
         id: "a2", tipo: "item", quantidade: 1, nome: "Adaga do Corvo", identificado: true, raridade: "raro",
         tipo_item: "Arma", subtipo: "Adaga", img: "qa/saque/exemplo-item.svg", imagem_url: null,
         dano: "1d4 + 1", tipo_dano: "perfurante", ca: null, alcance: "6/18 m", propriedades: ["Acuidade", "Leve", "Arremesso"],
-        peso: "0,5 kg", sintonia: true,
-        descricao: "Uma adaga de lâmina escura, com um corvo gravado no pomo.\nEnquanto sintonizado, você enxerga na penumbra como se fosse luz plena.",
+        peso: "0,5 kg", sintonia: true, descricao: "NÃO PODE APARECER: descrição de item identificado.",
         decisao: null, pego: false,
       },
+      { id: "a3", tipo: "item", quantidade: 2, nome: "Ração de viagem", identificado: true, raridade: "comum", img: null, imagem_url: null, decisao: null, pego: false },
       {
-        id: "a3", tipo: "item", quantidade: 2, nome: "Ração de viagem", identificado: true, raridade: "comum",
-        tipo_item: "Consumível", subtipo: "Comida", img: null, imagem_url: null, propriedades: { perecivel: true, dias: 2 },
-        peso: 1, descricao: "Carne seca, pão duro e frutas secas.", decisao: null, pego: false,
-      },
-      {
-        id: "a4", tipo: "item", quantidade: 1, nome: "Pacote lacrado", identificado: false,
-        tipo_item: "Objeto", img: "qa/saque/exemplo-item.svg", imagem_url: null,
+        id: "a4", tipo: "item", quantidade: 1, nome: "Pacote lacrado", identificado: false, img: "qa/saque/exemplo-item.svg", imagem_url: null,
         descricao: "Um pacote de couro, fechado com cera vermelha. Algo chacoalha dentro.", decisao: null, pego: false,
       },
-      {
-        id: "a5", tipo: "item", quantidade: 1, nome: "Anel de Sinete Antigo", identificado: true, raridade: "lendario",
-        tipo_item: "Joia", subtipo: "Anel", propriedades: "Mágico", descricao: "O brasão de uma casa esquecida.", decisao: "pegou", pego: true,
-      },
-      { id: "a6", tipo: "item", quantidade: 1, nome: "Elmo amassado", identificado: true, raridade: "incomum", tipo_item: "Armadura", ca: 1, decisao: null, pego: false },
-      { id: "a7", tipo: "item", quantidade: 1, nome: "Frasco púrpura", identificado: true, raridade: "muito_raro", tipo_item: "Poção", decisao: "deixou", pego: false },
+      { id: "a5", tipo: "item", quantidade: 1, nome: "Anel de Sinete Antigo", identificado: true, raridade: "lendario", decisao: "pegou", pego: true },
+      { id: "a6", tipo: "item", quantidade: 1, nome: "Elmo amassado", identificado: true, raridade: "incomum", decisao: null, pego: false },
+      { id: "a7", tipo: "item", quantidade: 1, nome: "Frasco púrpura", identificado: true, raridade: "muito_raro", decisao: "deixou", pego: false },
     ],
   };
+  // ?origem=achado: o ACHADO DIRETO (o Mestre entrega a um personagem): "Você encontrou".
+  const achado = {
+    corpo: { id: "c2", nome: "Achado", origem: "achado" },
+    pc: { id: "p1", nome: "Guldrum" },
+    revista: { id: "r2" },
+    achados: [
+      { id: "b1", tipo: "moedas", quantidade: 1, moedas: { pp: 0, gp: 25, ep: 0, sp: 0, cp: 0 }, decisao: null, pego: false },
+      { id: "b2", tipo: "item", quantidade: 1, nome: "Manto do Andarilho", identificado: true, raridade: "incomum", img: "qa/saque/exemplo-item.svg", imagem_url: null, decisao: null, pego: false },
+      {
+        id: "b3", tipo: "item", quantidade: 1, nome: "Frasco turvo", identificado: false, img: "qa/saque/exemplo-item.svg", imagem_url: null,
+        descricao: "Um líquido espesso, que se move sozinho dentro do vidro.", decisao: null, pego: false,
+      },
+    ],
+  };
+  const eAchado = p.get("origem") === "achado";
+  const payload = eAchado ? achado : saque;
+  if (eAchado) document.querySelector(".window-title").textContent = "O achado";
   const dados = dadosDaJanela(payload);
-  const p = new URLSearchParams(location.search);
   let estado = estadoInicial();
   // ?estado=erro: uma linha com a frase de recusa; ?estado=espera: botões desligados;
   // ?estado=tudo: tudo decidido, com o rodapé.

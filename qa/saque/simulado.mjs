@@ -1,4 +1,4 @@
-// O SAQUE (v1.25.0): a cola de saque-foundry.js com um Foundry de MENTIRA (os
+// O SAQUE (v1.25.0; a janela enxuta e o achado direto, v1.26.0): a cola de saque-foundry.js com um Foundry de MENTIRA (os
 // ganchos, o fetch, as mensagens e as perguntas falsos). Fora do CI.
 // Uso, da raiz do módulo: node qa/saque/simulado.mjs
 // Confere a ligação entre as peças; NÃO prova nada sobre o Foundry de verdade.
@@ -129,9 +129,12 @@ assert.deepEqual(posts.at(-1).corpo, { op: "saque.revelar", revista_id: "rev-1" 
 assert.ok(mensagens[2].content.includes("Revelado a Guldrum."));
 
 // 7. "revelada": a pergunta ao dono ativo abre a janela (aqui o mesmo processo faz os dois papéis)
-receberComandoDeSaque({ aviso_id: "av3", acao: "revelada", ...base, achados: [{ id: "a1", tipo: "item", nome: "Adaga", identificado: true, nome_real: "segredo" }] });
+receberComandoDeSaque({ aviso_id: "av3", acao: "revelada", ...base, achados: [{ id: "a1", tipo: "item", nome: "Adaga", identificado: true, raridade: "raro", nome_real: "segredo", dano: "1d4", sintonia: true, descricao: "Lâmina." }] });
 await pausa();
 assert.equal(consultas.length, 1);
+// v1.26.0: do item vai só o que a janela enxuta usa, mesmo que um Companion antigo mande mais
+assert.deepEqual(consultas[0].dados.achados, [{ id: "a1", tipo: "item", nome: "Adaga", identificado: true, raridade: "raro" }]);
+assert.equal(consultas[0].dados.origem, "saque");
 assert.equal(consultas[0].nome, `${MODULE_ID}.saqueAbrir`);
 assert.ok(!JSON.stringify(consultas[0].dados).includes("segredo"));
 assert.equal(janelasAbertas.length, 1);
@@ -143,6 +146,32 @@ assert.deepEqual(r, { ok: true, pendentes: 0 });
 assert.deepEqual(posts.at(-1).corpo, { op: "saque.pegar", revista_id: "rev-1", achado_id: "a1" });
 responder = () => ({ ok: false, error: "Outro personagem já pegou.", recusado: true });
 assert.deepEqual(await CONFIG.queries[`${MODULE_ID}.saqueDecidir`]({ revista_id: "rev-1", achado_id: "a1", pegar: false }), { ok: false, error: "Outro personagem já pegou." });
+
+// 8b. O ACHADO DIRETO (v1.26.0): só "revelada" e "encerrada", sem cartão de antes
+const achado = { corpo: { id: "corpo-9", nome: "Achado", origem: "achado" }, pc: base.pc, revista: { id: "rev-9" } };
+const cartoesAntes = mensagens.length;
+assert.deepEqual(receberComandoDeSaque({ aviso_id: "ac1", acao: "revelada", ...achado, achados: [{ id: "b1", tipo: "item", nome: "Manto", identificado: true, raridade: "incomum" }] }), { recebido: true });
+await pausa();
+assert.equal(mensagens.length, cartoesAntes, "a revelada do achado não cria cartão nenhum");
+assert.equal(consultas.at(-1).dados.origem, "achado");
+assert.equal(janelasAbertas.length, 2);
+assert.equal(janelasAbertas[1].options.id, "cfb-saque-rev-9");
+assert.equal(janelasAbertas[1].title, "O achado");
+assert.equal(janelasAbertas[0].title, "O saque");
+// o dono fora do Foundry: um cartão curto só do GM (no saque de sempre é o aviso de tela, passo 9)
+const avisosAntes = avisos.length;
+receberComandoDeSaque({ aviso_id: "ac2", acao: "revelada", ...achado, pc: { id: "pc-2", nome: "Talaniel", foundry_actor_id: null }, achados: [] });
+await pausa();
+assert.equal(mensagens.length, cartoesAntes + 1);
+assert.ok(mensagens.at(-1).content.includes("Talaniel não está conectado: o achado espera no Companion."));
+assert.deepEqual(mensagens.at(-1).whisper, ["bruno"]);
+assert.deepEqual(mensagens.at(-1).flags[MODULE_ID].saque_cartao, { tipo: "achado_espera", corpo_id: "corpo-9", revista_id: "rev-9" });
+assert.equal(avisos.length, avisosAntes);
+// o fim: o cartão com o texto de `pegou`
+receberComandoDeSaque({ aviso_id: "ac3", acao: "encerrada", corpo: achado.corpo, pc: null, revista: null, pegou: "Guldrum encontrou: Manto" });
+await pausa();
+assert.ok(mensagens.at(-1).content.includes("Guldrum encontrou: Manto"));
+assert.deepEqual(mensagens.at(-1).whisper, ["bruno"]);
 
 // 9. sem dono no Foundry: o aviso ao GM; sem sessão: nada na tela; navegador que não é o GM ativo: nada sai
 receberComandoDeSaque({ aviso_id: "av4", acao: "revelada", ...base, pc: { id: "pc-2", nome: "Talaniel", foundry_actor_id: null }, achados: [] });
@@ -159,4 +188,4 @@ await pausa();
 assert.equal(posts.length, antes[0] + 1, "sem GM ativo, ninguém manda");
 assert.deepEqual(await CONFIG.queries[`${MODULE_ID}.saqueDecidir`]({ revista_id: "rev-1", achado_id: "a1", pegar: true }), { ok: false, error: "O Mestre não está conectado." });
 
-console.log(`OK: ${posts.length} pedidos à edge, ${mensagens.length} cartões, ${consultas.length} pergunta ao jogador, 1 janela.`);
+console.log(`OK: ${posts.length} pedidos à edge, ${mensagens.length} cartões, ${consultas.length} perguntas ao jogador, ${janelasAbertas.length} janelas.`);

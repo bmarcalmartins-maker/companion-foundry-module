@@ -1,4 +1,4 @@
-// O SAQUE (v1.25.0): a janela de pergaminho FORA do Foundry (qa/saque/janela.html),
+// O SAQUE (v1.25.0; a janela enxuta e o achado direto, v1.26.0): a janela de pergaminho FORA do Foundry (qa/saque/janela.html),
 // fotografada e medida. Fora do CI. Uso, da raiz do módulo:
 //   node qa/saque/capturar.mjs
 //
@@ -58,7 +58,9 @@ const TELAS = [
   { nome: "iphone-390", viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
   { nome: "ipad-820", viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 ];
-const ESTADOS = ["", "erro", "espera", "tudo"];
+const ESTADOS = ["", "erro", "espera", "tudo", "achado"]; // "achado": o achado direto (v1.26.0), ?origem=achado
+/** O que a janela do jogador NÃO mostra mais (v1.26.0), mesmo que um Companion antigo mande. */
+const PROIBIDOS = ["NÃO PODE APARECER", "1d4", "perfurante", "6/18 m", "Acuidade", "0,5 kg", "Exige sintonia", "Dano", "Propriedades", "Peso"];
 
 /** Roda NA PÁGINA: mede os textos, o foco e a largura. */
 function medirNaPagina(piorPapel) {
@@ -225,7 +227,8 @@ try {
       const erros = [];
       pagina.on("pageerror", (e) => erros.push(String(e)));
       pagina.on("console", (m) => { if (m.type() === "error") erros.push(m.text()); });
-      await pagina.goto(`${base}/qa/saque/janela.html${estado ? `?estado=${estado}` : ""}`, { waitUntil: "networkidle" });
+      const consulta = estado === "achado" ? "?origem=achado" : estado ? `?estado=${estado}` : "";
+      await pagina.goto(`${base}/qa/saque/janela.html${consulta}`, { waitUntil: "networkidle" });
       await pagina.waitForFunction(() => window.__pronto === true);
       // as cinco faces carregadas de verdade (document.fonts.check diz true também sem fonte nenhuma)
       const fontes = await pagina.evaluate(async () => {
@@ -258,6 +261,17 @@ try {
 
       console.log(`\n== ${nome} (${tela.viewport.width}x${tela.viewport.height}, densidade ${tela.deviceScaleFactor}${m.toque ? ", toque" : ""}) ==`);
       if (erros.length) falhou(`erros na página: ${erros.join(" | ")}`);
+      // v1.26.0: a janela enxuta e o título do achado direto
+      const miolo = await pagina.evaluate(() => ({
+        texto: document.querySelector(".cfb-saque-perg").innerText,
+        titulo: document.querySelector(".cfb-saque-titulo")?.textContent ?? "",
+        fatos: document.querySelectorAll(".cfb-saque-perg dl, .cfb-saque-perg .cfb-saque-fatos, .cfb-saque-perg .cfb-saque-sintonia").length,
+      }));
+      const vazou = PROIBIDOS.filter((t) => miolo.texto.includes(t));
+      if (vazou.length || miolo.fatos) falhou(`a janela mostrou o que saiu dela: ${vazou.join(", ")}${miolo.fatos ? " (bloco de fatos)" : ""}`);
+      const tituloEsperado = estado === "achado" ? "Você encontrou" : "O que você achou em Goblin Batedor";
+      if (miolo.titulo !== tituloEsperado) falhou(`título "${miolo.titulo}", esperado "${tituloEsperado}"`);
+      else if (!estado || estado === "achado") console.log(`  OK     título "${miolo.titulo}"; do item, só imagem, nome, raridade e botões`);
       const carregadas = fontes.filter((f) => f.endsWith("loaded"));
       if (carregadas.length < 5) falhou(`fontes: ${fontes.join("; ")}`);
       else if (!estado) console.log(`  OK     fontes carregadas: ${carregadas.length} faces`);
@@ -277,7 +291,7 @@ try {
         const ok = t.razao >= t.minimo;
         if (!ok) falhas++;
         // no estado padrão, toda linha; nos outros, só o que falha e o que é novo
-        if (!ok || !estado || /erro|decidido|rodape/.test(t.classe)) {
+        if (!ok || !estado || estado === "achado" || /erro|decidido|rodape/.test(t.classe)) {
           console.log(`  ${ok ? "OK   " : "FALHA"}  ${t.razao.toFixed(2)}:1 (mín. ${t.minimo})  ${t.px}px${t.negrito ? " negrito" : ""} ${t.familia}  "${t.texto}"`);
         }
         if (!/Scaly Sans|Mr Eaves Small Caps/.test(t.familia)) falhou(`fonte fora do padrão em "${t.texto}": ${t.familia}`);

@@ -11,9 +11,11 @@ import {
   criarMemoriaDeMortes,
   dadosDaJanela,
   depoisDaDecisao,
+  eAchadoDireto,
   estadoInicial,
   fraseDaFalha,
   htmlDaJanela,
+  htmlDoCartaoDeAchadoEsperando,
   htmlDoCartaoDeEncerrada,
   htmlDoCartaoDeMorte,
   htmlDoCartaoDePedido,
@@ -44,6 +46,10 @@ import {
  * Só o GM ATIVO fala com a edge (é quem tem a chave de entrada). O critério é
  * o de main.js (`souOGmAtivo`), NÃO o `isReportingGm()` de equip-sync.js, que
  * devolve verdadeiro quando não há GM ativo: todo jogador se acharia "o GM".
+ *
+ * O ACHADO DIRETO (v1.26.0, `corpo.origem === "achado"`): só chegam
+ * `revelada` e `encerrada`; não há cartão de morte, de rolagem nem de
+ * resultado. A janela é a mesma, com "Você encontrou".
  *
  * Liga e desliga: a configuração "O saque no Companion" (do mundo).
  */
@@ -249,9 +255,16 @@ async function tratarComando(payload) {
       if (cartao?.content?.includes?.("saque-revelar")) void resolverCartao(cartao, `Revelado a ${pc.nome ?? "?"}.`);
       // o dono ATIVO do ator (magias.js): um jogador conectado, dono dele
       const dono = ator ? donoDoAtor(ator, game.users) : null;
+      const achado = eAchadoDireto(payload);
       const fora = `${pc.nome ?? "O jogador"} não está no Foundry: ele pega pelo Companion.`;
+      // No achado direto não há cartão de antes no chat: o aviso de tela some
+      // e o Mestre ficaria sem rastro. Vai um cartão curto, só dos GMs.
+      const semDono = () =>
+        achado
+          ? criarCartao(htmlDoCartaoDeAchadoEsperando({ pc }), { para: gms, tipo: "achado_espera", corpo_id: corpo.id, revista_id: revista.id })
+          : avisar(fora);
       if (!dono) {
-        avisar(fora);
+        await semDono();
         return;
       }
       try {
@@ -259,7 +272,7 @@ async function tratarComando(payload) {
         await dono.query(QUERY_ABRIR_SAQUE, dadosDaJanela(payload), { timeout: ESPERA_DA_JANELA_MS });
       } catch (err) {
         console.warn(`${MODULE_ID} | saque: a janela não abriu no navegador de ${dono.name}`, err);
-        avisar(fora);
+        await semDono();
       }
       return;
     }
@@ -372,6 +385,15 @@ function classeDaJanela() {
       super({ id: `cfb-saque-${String(dados.revista_id).replace(/[^A-Za-z0-9-]/g, "-")}` });
       this.dados = dados;
       this.estado = estadoInicial();
+    }
+
+    /**
+     * O título da barra: "O achado" no achado direto (v1.26.0); senão o fixo.
+     * HIPÓTESE (docs/SAQUE.md, 15): que a ApplicationV2 leia o título por este
+     * getter. Se não ler, fica "O saque" e nada quebra.
+     */
+    get title() {
+      return this.dados?.origem === "achado" ? "O achado" : "O saque";
     }
 
     /** Os dados chegaram de novo (o Mestre revelou outra vez): as escolhas já feitas aqui ficam. */

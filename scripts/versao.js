@@ -1,5 +1,5 @@
 /**
- * A versão DESTE código (v1.24.0). O release carimba este arquivo junto com o
+ * A versão DESTE código (desde a v1.24.0). O release carimba este arquivo junto com o
  * module.json (.github/workflows/release.yml), e o teste confere que os dois
  * batem no repositório.
  *
@@ -9,4 +9,4 @@
  * versão que o Foundry diz ter instalada (`game.modules`) vem do SERVIDOR; esta
  * vem do CÓDIGO que o navegador carregou. Diferentes = código velho no cache.
  */
-export const VERSAO_DO_CODIGO = "1.25.0";
+export const VERSAO_DO_CODIGO = "1.26.0";

@@ -344,6 +344,29 @@ ainda é HIPÓTESE (ninguém testou no Foundry de verdade): `docs/SAQUE.md`.
   mostra só a fachada.
 - Liga e desliga em "O saque no Companion". Nas flags dos cartões só vão ids.
 
+### A sintonia e os efeitos do Mestre, o achado direto (desde a 1.26.0, 15/11)
+
+- **A sintonia pedida no Companion** (`scripts/plano-inventario.js`,
+  `docs/SINTONIA.md`): cada item do `actor.update` traz
+  `flags.sintonia = { exige, pedido, versao }`. Só o pedido MAIS NOVO que o já
+  aplicado (a flag `sintonia_aplicada` do item) muda `system.attuned`; sem
+  pedido, a sintonia continua do Foundry. O módulo impõe o limite do ator
+  (`system.attributes.attunement.max`, 3 de início): o pedido que não cabe não
+  sintoniza, o GM recebe o aviso e a volta (`item.estado`) leva o `attuned`
+  real.
+- **Os efeitos que o Mestre escreveu no Companion** (item feito à mão,
+  `flags.efeitos = { versao }` e `effects`): o item não é resolvido pelo
+  compêndio; versão nova troca no lugar os efeitos marcados `do_companion`
+  pelos novos, e `system.attunement`, `system.rarity` e a propriedade "mgc"
+  acompanham.
+- **O achado direto** (`corpo.origem === "achado"`, `docs/SAQUE.md`): o Mestre
+  entrega um achado a UM personagem, sem morto, sem Investigação e sem
+  "Revelar". Chegam só `revelada` (a janela, com "Você encontrou") e
+  `encerrada`.
+- **A janela do jogador ficou enxuta** (o saque de monstro também): do item,
+  só a imagem, o nome, a raridade (ou "Não identificado" e a fachada) e
+  "Pegar"/"Deixar". O resto aparece na ficha do item, depois de pegar.
+
 ## Testes
 
 `npm test` (Node 22, sem instalar nada): as regras puras e um Foundry falso
@@ -373,9 +396,9 @@ largura; as fotos ficam em `qa/saque/capturas/`).
 - `scripts/ordem.js` / `scripts/ordem-foundry.js` — the combat order to the Companion, the turn and focus commands (v1.24.0); `scripts/versao.js` — this code's version, stamped by the release.
 - `scripts/combate-sync.js` — hits and damage to the Companion's end-of-session report (v1.11.0); combat start/end for the climate soundtrack (v1.21.0, rules in `scripts/combate-estado.js`); skill checks for the context soundtrack (v1.22.0, `testeDaMensagem` in `scripts/combate.js`).
 - `scripts/iniciativa.js` / `scripts/iniciativa-foundry.js` — the spoken initiative (v1.23.0): the scene list, opening the combat, the player's roll prompt, rolling via the Companion.
-- `scripts/saque.js` / `scripts/saque-foundry.js` — looting (v1.25.0): the three death signals, the chat cards, the Investigation roll, the player's parchment window; `styles/saque.css`, `assets/pergaminho/`, `assets/fontes/`.
+- `scripts/saque.js` / `scripts/saque-foundry.js` — looting (v1.25.0): the three death signals, the chat cards, the Investigation roll, the player's parchment window; the direct find and the slim window (v1.26.0); `styles/saque.css`, `assets/pergaminho/`, `assets/fontes/`.
 - `scripts/magia-falada.js` — the spoken spell: the player-side query handler and the GM relay (v1.12.0; actions and shortcuts since v1.13.0).
-- `scripts/plano-inventario.js`, `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.
+- `scripts/plano-inventario.js` (since v1.26.0 also the attunement requested in the Companion, the attunement limit and the GM-written effects: `docs/SINTONIA.md`), `scripts/fila-por-ator.js`, `scripts/casar-compendio.js`, `scripts/moedas.js`, `scripts/combate.js`, `scripts/magias.js` — pure rules, tested in `test/`.
 
 ## Créditos
 
