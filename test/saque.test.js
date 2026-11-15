@@ -1,5 +1,5 @@
 /**
- * O SAQUE (saque.js, v1.25.0), sem Foundry: os três sinais de morte, a memória
+ * O SAQUE (saque.js, v1.25.0; a janela enxuta e o achado direto, v1.26.0), sem Foundry: os três sinais de morte, a memória
  * que não repete o corpo, o comando da ponte, a resposta da edge, a rolagem
  * de Investigação com a nossa flag (e ela FORA da música), os textos e o
  * escape de tudo o que vem de fora, nos cartões e na janela.
@@ -22,12 +22,14 @@ import {
   decisaoDoAchado,
   depoisDaDecisao,
   depoisDoEnvioDoSaque,
+  eAchadoDireto,
   escapar,
   estadoInicial,
   faixaEmPortugues,
   fonteEmPalavras,
   fraseDaFalha,
   htmlDaJanela,
+  htmlDoCartaoDeAchadoEsperando,
   htmlDoCartaoDeEncerrada,
   htmlDoCartaoDeMorte,
   htmlDoCartaoDePedido,
@@ -44,8 +46,7 @@ import {
   raridadeEmPortugues,
   rolagemDoSaque,
   textoDasMoedas,
-  textoDasPropriedades,
-  textoDaSintonia,
+  tituloDaJanela,
   textoPuro,
   validarComando,
 } from "../scripts/saque.js";
@@ -267,18 +268,7 @@ test("raridade, faixa e fonte em português; o que não existe vira vazio", () =
   assert.equal(fonteEmPalavras(undefined), "");
 });
 
-test("as propriedades em texto, lista ou objeto, sem quebrar", () => {
-  assert.equal(textoDasPropriedades("Acuidade, Leve"), "Acuidade, Leve");
-  assert.equal(textoDasPropriedades(["Acuidade", { nome: "Leve" }, { label: "Arremesso" }, null, 2, {}]), "Acuidade, Leve, Arremesso, 2");
-  assert.equal(textoDasPropriedades({ fin: true, lgt: false, alcance: "6 m", cargas: 3, x: null, y: {} }), "fin, alcance: 6 m, cargas: 3");
-  for (const v of [null, undefined, 7, true, [], {}]) assert.equal(textoDasPropriedades(v), "");
-});
-
-test("a sintonia e a imagem", () => {
-  assert.equal(textoDaSintonia(true), "Exige sintonia");
-  assert.equal(textoDaSintonia("por um clérigo"), "Sintonia: por um clérigo");
-  assert.equal(textoDaSintonia(false), "");
-  assert.equal(textoDaSintonia(null), "");
+test("a imagem: https do Companion, senão o caminho do Foundry; esquema ruim, nenhuma", () => {
   assert.equal(imagemDoAchado({ imagem_url: "https://x.supabase.co/a.webp", img: "icons/a.webp" }), "https://x.supabase.co/a.webp");
   assert.equal(imagemDoAchado({ imagem_url: "http://x/a.webp", img: "icons/a.webp" }), "icons/a.webp", "http não: cai no caminho do Foundry");
   assert.equal(imagemDoAchado({ img: "icons/weapons/daggers/dagger.webp" }, (c) => `/vtt/${c}`), "/vtt/icons/weapons/daggers/dagger.webp");
@@ -427,8 +417,8 @@ const revelada = () =>
 
 test("o que vai ao navegador do jogador: só o que a janela usa, nada do Mestre", () => {
   const d = dadosDaJanela(revelada());
-  assert.deepEqual(Object.keys(d).sort(), ["achados", "corpo", "pc", "revista_id"]);
-  assert.deepEqual([d.revista_id, d.corpo, d.pc, d.achados.length], ["rev-1", "Goblin", "Guldrum", 5]);
+  assert.deepEqual(Object.keys(d).sort(), ["achados", "corpo", "origem", "pc", "revista_id"]);
+  assert.deepEqual([d.revista_id, d.origem, d.corpo, d.pc, d.achados.length], ["rev-1", "saque", "Goblin", "Guldrum", 5]);
   assert.ok(!JSON.stringify(d).includes("foundry_ator_uuid"));
   assert.ok(!JSON.stringify(d).includes("faixa"));
   // a segunda trava: o que não é da janela não passa, e o não identificado vai só com a fachada
@@ -437,10 +427,17 @@ test("o que vai ao navegador do jogador: só o que a janela usa, nada do Mestre"
     { id: "a2", tipo: "item", nome: "Adaga", nome_real: "Adaga", fonte: "usava", identificado: true, raridade: "raro", dano: "1d4" },
   ] }));
   assert.deepEqual(vazado.achados[0], { id: "a1", tipo: "item", nome: "Pacote", identificado: false, descricao: "x" });
-  assert.deepEqual(vazado.achados[1], { id: "a2", tipo: "item", nome: "Adaga", identificado: true, raridade: "raro", dano: "1d4" });
+  assert.deepEqual(vazado.achados[1], { id: "a2", tipo: "item", nome: "Adaga", identificado: true, raridade: "raro" });
+  // v1.26.0 (D1): a lista fixa é id, tipo, quantidade, moedas, decisao, pego, nome, identificado,
+  // raridade, img, imagem_url (+ descricao só no não identificado), mesmo que um Companion antigo mande mais
+  const antigo = dadosDaJanela(revelada());
+  const adaga = antigo.achados.find((a) => a.id === "a2");
+  assert.deepEqual(Object.keys(adaga).sort(), ["decisao", "id", "identificado", "imagem_url", "img", "nome", "pego", "quantidade", "raridade", "tipo"]);
+  const pacote = antigo.achados.find((a) => a.id === "a3");
+  assert.deepEqual(Object.keys(pacote).sort(), ["decisao", "descricao", "id", "identificado", "imagem_url", "nome", "pego", "quantidade", "tipo"]);
 });
 
-test("a janela: as moedas primeiro, o item com tudo, o não identificado só com a fachada, o já decidido sem botões", () => {
+test("a janela ENXUTA (v1.26.0): as moedas primeiro; do item só imagem, nome, raridade e botões; o não identificado com a fachada", () => {
   const d = dadosDaJanela(revelada());
   const html = htmlDaJanela(d, estadoInicial(), { rota: (c) => `/vtt/${c}` });
   assert.ok(html.includes("O que você achou em Goblin</h2>"));
@@ -448,23 +445,27 @@ test("a janela: as moedas primeiro, o item com tudo, o não identificado só com
   assert.ok(html.indexOf("3 po, 8 pp") < html.indexOf("Adaga do Corvo"));
   assert.ok(html.includes(`data-action="pegar" data-achado="a1">Pegar as moedas</button>`));
   assert.equal((html.match(/Pegar as moedas/g) ?? []).length, 1);
-  // o item identificado
+  // o item identificado: imagem, nome (xN), raridade, Pegar e Deixar. Mais nada.
+  const adaga = html.slice(html.indexOf('src="/vtt/icons/dagger.webp"'), html.indexOf('src="https://x.supabase.co/p.webp"'));
   assert.ok(html.includes(`<img class="cfb-saque-imagem" src="/vtt/icons/dagger.webp" alt="" loading="lazy">`));
-  assert.ok(html.includes("Adaga do Corvo x2</h3>"));
-  assert.ok(html.includes(`<span class="cfb-saque-raridade cfb-saque-raridade--raro">Raro</span> · Arma · Adaga`));
-  for (const t of ["<dt>Dano</dt><dd>1d4 perfurante</dd>", "<dt>Alcance</dt><dd>6/18 m</dd>", "<dt>Propriedades</dt><dd>Acuidade, Leve</dd>", "<dt>Peso</dt><dd>0.5</dd>", "Exige sintonia"]) {
-    assert.ok(html.includes(t), t);
+  assert.ok(adaga.includes("Adaga do Corvo x2</h3>"));
+  assert.ok(adaga.includes(`<p class="cfb-saque-meta"><span class="cfb-saque-raridade cfb-saque-raridade--raro">Raro</span></p>`));
+  assert.ok(adaga.includes(`data-action="pegar" data-achado="a2">Pegar</button>`));
+  assert.ok(adaga.includes(`data-action="deixar" data-achado="a2">Deixar</button>`));
+  // o Companion antigo mandou dano, alcance, propriedades, peso, sintonia, tipo e descrição: nada disso aparece
+  for (const proibido of ["Dano", "1d4", "perfurante", "Alcance", "6/18", "Propriedades", "Acuidade", "Peso", "0.5", "sintonia", "Arma", "Lâmina escura", "cfb-saque-descricao", "cfb-saque-fatos"]) {
+    assert.ok(!adaga.includes(proibido), `o item identificado mostrou ${proibido}`);
   }
-  assert.ok(!html.includes("<dt>CA</dt>"), "CA nula não aparece");
-  assert.ok(html.includes(`<p class="cfb-saque-descricao">Lâmina escura.\nFria.</p>`), "texto puro com quebra");
-  assert.ok(html.includes(`data-action="pegar" data-achado="a2">Pegar</button>`));
-  assert.ok(html.includes(`data-action="deixar" data-achado="a2">Deixar</button>`));
-  // o não identificado: só nome, tipo, imagem e descrição, mesmo que o resto tenha vindo
+  assert.ok(!html.includes("<dl") && !html.includes("<dt"), "a janela não tem mais o bloco de fatos");
+  // o não identificado: nome, "Não identificado", imagem e a descrição da FACHADA, mesmo que o resto tenha vindo
   const pacote = html.slice(html.indexOf('src="https://x.supabase.co/p.webp"'), html.indexOf("Anel</h3>"));
   assert.ok(pacote.includes("Pacote lacrado</h3>"));
-  assert.ok(pacote.includes(`<span class="cfb-saque-nao-identificado">Não identificado</span> · Objeto`));
-  assert.ok(pacote.includes("Fechado com cera."));
-  for (const proibido of ["Lendário", "9d9", "Segredo", "sintonia", "Carta", "cfb-saque-raridade"]) assert.ok(!pacote.includes(proibido), `o não identificado mostrou ${proibido}`);
+  assert.ok(pacote.includes(`<p class="cfb-saque-meta"><span class="cfb-saque-nao-identificado">Não identificado</span></p>`));
+  assert.ok(pacote.includes(`<p class="cfb-saque-descricao">Fechado com cera.</p>`));
+  for (const proibido of ["Lendário", "9d9", "Segredo", "sintonia", "Carta", "Objeto", "cfb-saque-raridade"]) assert.ok(!pacote.includes(proibido), `o não identificado mostrou ${proibido}`);
+  // a fachada vira texto puro, com a quebra de linha
+  const fachada = htmlDaJanela({ revista_id: "r", corpo: "X", achados: [{ id: "f1", tipo: "item", nome: "Frasco", identificado: false, descricao: "<p>Turvo.</p><p>Frio.</p>" }] });
+  assert.ok(fachada.includes(`<p class="cfb-saque-descricao">Turvo.\nFrio.</p>`));
   // os já decididos
   const anel = html.slice(html.indexOf("Anel</h3>"), html.indexOf("Frasco</h3>"));
   assert.ok(anel.includes("Você pegou.") && !anel.includes("<button"));
@@ -473,6 +474,45 @@ test("a janela: as moedas primeiro, o item com tudo, o não identificado só com
   // ainda há o que decidir: sem rodapé
   assert.ok(!html.includes("Tudo decidido."));
   assert.equal(pendentesDaJanela(d, estadoInicial()), 3);
+});
+
+test("O ACHADO DIRETO (v1.26.0): corpo.origem \"achado\" troca o título por \"Você encontrou\"; o resto é a mesma janela", () => {
+  const achado = (extra = {}) =>
+    comando("revelada", {
+      corpo: { id: "corpo-9", nome: MAU, origem: "achado" },
+      achados: [
+        { id: "b1", tipo: "moedas", moedas: { gp: 25 }, decisao: null, pego: false },
+        { id: "b2", tipo: "item", quantidade: 1, nome: "Manto do Andarilho", identificado: true, raridade: "incomum", img: "icons/manto.webp", decisao: null, pego: false },
+      ],
+      ...extra,
+    });
+  assert.equal(eAchadoDireto(achado()), true);
+  for (const origem of ["foundry", "mestre", undefined, "ACHADO", 1]) {
+    assert.equal(eAchadoDireto(comando("revelada", { corpo: { id: "c", nome: "Goblin", origem } })), false, String(origem));
+  }
+  assert.deepEqual(validarComando(achado()), { ok: true }, "a revelada do achado passa sem cartão de antes");
+  assert.deepEqual(validarComando(comando("encerrada", { corpo: { id: "corpo-9", origem: "achado" }, pc: null, revista: null, pegou: "Guldrum encontrou: 25 po" })), { ok: true });
+
+  const d = dadosDaJanela(achado());
+  assert.equal(d.origem, "achado");
+  assert.equal(tituloDaJanela(d), "Você encontrou");
+  const html = htmlDaJanela(d, estadoInicial());
+  assert.ok(html.includes(`<h2 class="cfb-saque-titulo">Você encontrou</h2>`));
+  assert.ok(!html.includes("O que você achou em"), "nada de corpo no achado direto");
+  assert.ok(!html.includes("alert(1)"), "o nome do corpo nem entra");
+  assert.ok(html.includes("25 po") && html.includes(`data-achado="b1">Pegar as moedas</button>`));
+  assert.ok(html.includes("Manto do Andarilho</h3>") && html.includes("Incomum") && html.includes(`data-action="deixar" data-achado="b2"`));
+  // o saque de sempre (origem ausente, "foundry" ou "mestre") segue com o corpo no título
+  assert.equal(tituloDaJanela(dadosDaJanela(comando("revelada", { achados: [] }))), "O que você achou em Goblin");
+  assert.equal(tituloDaJanela(dadosDaJanela(comando("revelada", { corpo: { id: "c", nome: "Baú", origem: "mestre" }, achados: [] }))), "O que você achou em Baú");
+  assert.equal(tituloDaJanela(null), "O que você achou em ?");
+
+  // o fim usa o texto de `pegou`, como no saque; o dono ausente ganha um cartão curto, escapado
+  assert.ok(htmlDoCartaoDeEncerrada({ pegou: "Guldrum encontrou: 25 po, Manto do Andarilho" }).includes("Guldrum encontrou: 25 po, Manto do Andarilho"));
+  const espera = htmlDoCartaoDeAchadoEsperando({ pc: { nome: MAU } });
+  semHtmlDeFora(espera, "achado esperando");
+  assert.ok(htmlDoCartaoDeAchadoEsperando({ pc: { nome: "Talaniel" } }).includes("Talaniel não está conectado: o achado espera no Companion."));
+  assert.ok(!espera.includes("<button"));
 });
 
 test("a janela escapa TODO texto de fora (nome com <script>, descrição, tipo, moedas, erro)", () => {
@@ -497,7 +537,7 @@ test("a janela escapa TODO texto de fora (nome com <script>, descrição, tipo, 
   assert.ok(!html.includes("id ruim"), "achado de id inválido fica de fora");
   // as únicas marcas são as nossas
   const marcas = new Set((html.match(/<\/?([a-z0-9]+)/g) ?? []).map((m) => m.replace(/[</]/g, "")));
-  for (const m of marcas) assert.ok(["div", "h2", "h3", "ul", "li", "p", "span", "dl", "dt", "dd", "button"].includes(m), `marca inesperada: ${m}`);
+  for (const m of marcas) assert.ok(["div", "h2", "h3", "ul", "li", "p", "span", "button"].includes(m), `marca inesperada: ${m}`);
 });
 
 test("a janela: esperando o Mestre desliga os botões; o erro aparece na linha; tudo decidido mostra o rodapé", () => {

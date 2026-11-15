@@ -1,5 +1,5 @@
 /**
- * O SAQUE (v1.25.0). As regras e os textos, sem Foundry e sem DOM (testados em
+ * O SAQUE (v1.25.0; o achado direto e a janela enxuta, v1.26.0). As regras e os textos, sem Foundry e sem DOM (testados em
  * test/saque.test.js); quem ouve os ganchos, cria os cartões e abre a janela é
  * saque-foundry.js.
  *
@@ -9,6 +9,11 @@
  * revela; o jogador vê a janela de pergaminho e escolhe Pegar ou Deixar.
  * TUDO o que é regra mora no banco do Companion: daqui só saem os fatos
  * (morreu, rolou, clicou) e os desenhos (cartões e janela).
+ *
+ * O ACHADO DIRETO (v1.26.0, `corpo.origem === "achado"`): o Mestre entrega um
+ * achado a UM personagem ("você encontra Y"), sem morto, sem Investigação e
+ * sem "Revelar". Chegam só `revelada` (a janela, com "Você encontrou") e
+ * `encerrada`.
  *
  * Os textos do saque vão em português direto aqui (o que vem do Companion,
  * as frases de recusa, a faixa, a raridade, já chega em português); só a
@@ -46,12 +51,6 @@ export function escapar(s) {
 const texto = (v, teto = 200) => (typeof v === "string" && v.trim() ? v.trim().slice(0, teto) : null);
 const eId = (v) => typeof v === "string" && /^[A-Za-z0-9_.:-]{1,200}$/.test(v);
 const inteiro = (v) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
-
-/** Número ou texto curto vira texto; o resto, nulo (nunca "[object Object]"). */
-function valorEmTexto(v, teto = 200) {
-  if (typeof v === "number" && Number.isFinite(v)) return String(v);
-  return texto(v, teto);
-}
 
 /**
  * A descrição em TEXTO PURO: as marcas de HTML saem (parágrafo e <br> viram
@@ -287,38 +286,6 @@ export function fonteEmPalavras(f) {
 }
 
 /**
- * As propriedades do item, que chegam como texto, lista ou objeto: sempre uma
- * linha de texto (ou ""). Lista: textos, ou objetos com nome/name/label.
- * Objeto: as chaves ligadas (`{ fin: true }` → "fin") e "chave: valor".
- */
-export function textoDasPropriedades(p) {
-  if (typeof p === "string") return p.trim().slice(0, 400);
-  const nomeDe = (v) => {
-    if (typeof v === "string" || typeof v === "number") return String(v).trim();
-    if (v && typeof v === "object") return texto(v.nome) ?? texto(v.name) ?? texto(v.label) ?? "";
-    return "";
-  };
-  if (Array.isArray(p)) return p.map(nomeDe).filter(Boolean).join(", ").slice(0, 400);
-  if (p && typeof p === "object") {
-    const partes = [];
-    for (const [k, v] of Object.entries(p)) {
-      if (v === true) partes.push(k);
-      else if (typeof v === "string" && v.trim()) partes.push(`${k}: ${v.trim()}`);
-      else if (typeof v === "number" && Number.isFinite(v)) partes.push(`${k}: ${v}`);
-    }
-    return partes.join(", ").slice(0, 400);
-  }
-  return "";
-}
-
-/** A sintonia: true → "Exige sintonia"; texto → "Sintonia: <texto>". */
-export function textoDaSintonia(s) {
-  if (s === true) return "Exige sintonia";
-  const t = texto(s);
-  return t ? `Sintonia: ${t}` : "";
-}
-
-/**
  * O endereço da imagem do achado: `imagem_url` só se for https; senão `img`,
  * um caminho do Foundry (sem esquema: nada de "javascript:" nem "data:"),
  * passado por `rota` (no Foundry, foundry.utils.getRoute). Nenhum: nulo.
@@ -441,6 +408,14 @@ export function htmlDoCartaoDeEncerrada({ pegou }) {
   return t ? cartao(`<p>${escapar(t)}</p>`) : null;
 }
 
+/**
+ * O achado direto com o dono fora do Foundry (v1.26.0): não há cartão de
+ * antes no chat, então o aviso fica num cartão curto, só dos GMs.
+ */
+export function htmlDoCartaoDeAchadoEsperando({ pc }) {
+  return cartao(`<p class="cfb-saque-aviso">${escapar(pc?.nome ?? "O jogador")} não está conectado: o achado espera no Companion.</p>`);
+}
+
 /** O cartão depois do clique que deu certo: o estado novo, sem botões. */
 export function htmlDoCartaoResolvido(frase) {
   return cartao(`<p>${escapar(frase)}</p>`);
@@ -450,15 +425,25 @@ export function htmlDoCartaoResolvido(frase) {
 /*  A janela de pergaminho do jogador           */
 /* -------------------------------------------- */
 
-/** Os campos de um achado que a janela usa; do NÃO identificado, só a fachada. */
-const CAMPOS_DA_FACHADA = ["id", "tipo", "quantidade", "moedas", "decisao", "pego", "nome", "identificado", "tipo_item", "img", "imagem_url", "descricao"];
-const CAMPOS_DO_ACHADO = [...CAMPOS_DA_FACHADA, "raridade", "subtipo", "dano", "tipo_dano", "ca", "alcance", "propriedades", "peso", "sintonia"];
+/**
+ * Os campos de um achado que a janela usa (v1.26.0, decisão D1 do Bruno: a
+ * janela mostra foto, nome e raridade; o resto aparece na ficha do item depois
+ * de pegar). Do NÃO identificado: sem a raridade (entregaria o que é) e com a
+ * `descricao`, que nele é a da fachada.
+ */
+const CAMPOS_COMUNS = ["id", "tipo", "quantidade", "moedas", "decisao", "pego", "nome", "identificado", "img", "imagem_url"];
+const CAMPOS_DO_ACHADO = [...CAMPOS_COMUNS, "raridade"];
+const CAMPOS_DA_FACHADA = [...CAMPOS_COMUNS, "descricao"];
+
+/** `corpo.origem` do comando: só "achado" muda o desenho (ausente = o saque de sempre). */
+export const eAchadoDireto = (payload) => payload?.corpo?.origem === "achado";
 
 /**
  * O que a op `revelada` manda ao navegador do jogador: só o que a janela usa.
  * O Companion já manda a visão do jogador; aqui é a segunda trava: campo que
- * não é da janela (o nome de verdade, a fonte, a faixa) não passa, e o item
- * não identificado vai só com a fachada, venha o que vier.
+ * não é da janela (o nome de verdade, a fonte, a faixa, e desde a v1.26.0 o
+ * dano, a CA, o alcance, as propriedades, o peso, a sintonia e a descrição do
+ * item identificado) não passa, venha o que vier de um Companion antigo.
  */
 export function dadosDaJanela(payload) {
   const limpo = (a) => {
@@ -469,10 +454,16 @@ export function dadosDaJanela(payload) {
   };
   return {
     revista_id: payload?.revista?.id ?? null,
+    origem: eAchadoDireto(payload) ? "achado" : "saque",
     corpo: texto(payload?.corpo?.nome) ?? "?",
     pc: texto(payload?.pc?.nome) ?? "",
     achados: (Array.isArray(payload?.achados) ? payload.achados : []).slice(0, 60).map(limpo),
   };
+}
+
+/** O título de dentro da janela: "Você encontrou" no achado direto. */
+export function tituloDaJanela(dados) {
+  return dados?.origem === "achado" ? "Você encontrou" : `O que você achou em ${dados?.corpo ?? "?"}`;
 }
 
 /** A decisão de uma linha: "pegou", "deixou" ou nula (a escolhida na janela vence a que veio). */
@@ -549,45 +540,25 @@ function linhaDeMoedas(a, estado) {
   );
 }
 
+/** Do item, a janela mostra só a imagem, o nome (xN), a raridade (ou "Não identificado" e a fachada) e os botões. */
 function linhaDeItem(a, estado, rota) {
   const identificado = a?.identificado !== false;
   const src = imagemDoAchado(a, rota);
   const imagem = src ? `<img class="cfb-saque-imagem" src="${escapar(src)}" alt="" loading="lazy">` : "";
-  const meta = [];
+  let meta = "";
   if (identificado) {
     const raridade = raridadeEmPortugues(a?.raridade);
-    if (raridade) meta.push(`<span class="cfb-saque-raridade ${classeDaRaridade(a.raridade)}">${escapar(raridade)}</span>`);
+    if (raridade) meta = `<span class="cfb-saque-raridade ${classeDaRaridade(a.raridade)}">${escapar(raridade)}</span>`;
   } else {
-    meta.push(`<span class="cfb-saque-nao-identificado">Não identificado</span>`);
+    meta = `<span class="cfb-saque-nao-identificado">Não identificado</span>`;
   }
-  const tipo = [texto(a?.tipo_item), identificado ? texto(a?.subtipo) : null].filter(Boolean).join(" · ");
-  if (tipo) meta.push(escapar(tipo));
-
-  const fatos = [];
-  if (identificado) {
-    const dano = [valorEmTexto(a?.dano), texto(a?.tipo_dano)].filter(Boolean).join(" ");
-    if (dano && valorEmTexto(a?.dano)) fatos.push(["Dano", dano]);
-    const ca = valorEmTexto(a?.ca);
-    if (ca) fatos.push(["CA", ca]);
-    const alcance = valorEmTexto(a?.alcance);
-    if (alcance) fatos.push(["Alcance", alcance]);
-    const props = textoDasPropriedades(a?.propriedades);
-    if (props) fatos.push(["Propriedades", props]);
-    const peso = valorEmTexto(a?.peso);
-    if (peso) fatos.push(["Peso", peso]);
-  }
-  const sintonia = identificado ? textoDaSintonia(a?.sintonia) : "";
-  const descricao = textoPuro(a?.descricao);
+  const descricao = identificado ? "" : textoPuro(a?.descricao);
   return (
     `<li class="cfb-saque-linha${imagem ? " cfb-saque-linha--com-imagem" : ""}">` +
     imagem +
     `<div class="cfb-saque-corpo">` +
     `<h3 class="cfb-saque-nome">${escapar(nomeDoAchado(a))}${escapar(vezes(a))}</h3>` +
-    (meta.length ? `<p class="cfb-saque-meta">${meta.join(" · ")}</p>` : "") +
-    (fatos.length
-      ? `<dl class="cfb-saque-fatos">${fatos.map(([k, v]) => `<div><dt>${escapar(k)}</dt><dd>${escapar(v)}</dd></div>`).join("")}</dl>`
-      : "") +
-    (sintonia ? `<p class="cfb-saque-sintonia">${escapar(sintonia)}</p>` : "") +
+    (meta ? `<p class="cfb-saque-meta">${meta}</p>` : "") +
     (descricao ? `<p class="cfb-saque-descricao">${escapar(descricao)}</p>` : "") +
     rodapeDaLinha(a, estado, "Pegar") +
     `</div></li>`
@@ -595,7 +566,8 @@ function linhaDeItem(a, estado, rota) {
 }
 
 /**
- * O miolo da janela "O que você achou em <corpo>", PURO: os dados que vieram
+ * O miolo da janela ("O que você achou em <corpo>"; no achado direto, "Você
+ * encontrou"), PURO: os dados que vieram
  * (`dadosDaJanela`) e o estado da janela (`decisoes` por achado, `esperando`
  * a resposta do Mestre, `erros` por achado, `aviso` geral). As moedas
  * primeiro, depois os itens. Todo texto de fora sai escapado.
@@ -610,7 +582,7 @@ export function htmlDaJanela(dados, estado = {}, { rota = (c) => c } = {}) {
   const aviso = texto(estado.aviso, 300);
   return (
     `<div class="cfb-saque-folha">` +
-    `<h2 class="cfb-saque-titulo">O que você achou em ${escapar(dados?.corpo ?? "?")}</h2>` +
+    `<h2 class="cfb-saque-titulo">${escapar(tituloDaJanela(dados))}</h2>` +
     (achados.length ? `<ul class="cfb-saque-achados">${linhas.join("")}</ul>` : `<p class="cfb-saque-vazio">Nada.</p>`) +
     (aviso ? `<p class="cfb-saque-erro" role="alert">${escapar(aviso)}</p>` : "") +
     (tudo || !achados.length

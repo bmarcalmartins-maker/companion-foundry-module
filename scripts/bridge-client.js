@@ -6,6 +6,7 @@ import {
   getCompanionItemId,
   isSyncableItem,
   reportCreatedEffects,
+  reportItemEffects,
 } from "./equip-sync.js";
 import { readActor } from "./actor-read.js";
 import { pedirMagia } from "./magia-falada.js";
@@ -15,7 +16,7 @@ import { receberComandoDeSaque } from "./saque-foundry.js";
 import { segurarFicha, soltarFicha } from "./live-sync.js";
 import { criarFila } from "./fila-por-ator.js";
 import { aplicarMoedasDoCompanion } from "./moedas-sync.js";
-import { planejarInventario } from "./plano-inventario.js";
+import { LIMITE_DE_SINTONIA, fraseDoLimiteDeSintonia, pedidoDeSintonia, planejarInventario } from "./plano-inventario.js";
 import { chavesDoHint, slugify, uuidDoHint } from "./casar-compendio.js";
 
 const BASE_BACKOFF_MS = 1_000;
@@ -391,6 +392,16 @@ export class BridgeClient {
         data.system.unidentified = { ...(data.system.unidentified ?? {}), ...item.system.unidentified };
       }
     }
+    // SINTONIA (1.26.0): o pedido do jogador no Companion vale no item do
+    // compêndio também. `item.system.attuned` já passou pelo limite do ator
+    // (#updateActorSegurado grava nele a decisão do plano).
+    if (
+      pedidoDeSintonia(item.flags?.[MODULE_ID]?.sintonia) &&
+      typeof item.system?.attuned === "boolean" &&
+      "attuned" in (data.system ?? {})
+    ) {
+      data.system.attuned = item.system.attuned;
+    }
     // Keep compendium art unless the Companion sent a non-placeholder image of its own.
     if (item.img && !item.img.startsWith("icons/svg/")) data.img = item.img;
     // Payload flags merge on top — item_id/synced markers drive idempotent re-sync.
@@ -411,7 +422,10 @@ export class BridgeClient {
     const prepared = [];
     for (const item of items) {
       let resolved = null;
-      const hint = item?.flags?.[MODULE_ID]?.compendium_hint;
+      // EFEITOS DO MESTRE (1.26.0): item cujos bônus o Mestre escreveu no
+      // Companion (`flags.efeitos`) NÃO passa pelo compêndio: o item de lá
+      // traria os efeitos dele por cima dos do Mestre. Vai a casca, inteira.
+      const hint = temEfeitosDoMestre(item) ? null : item?.flags?.[MODULE_ID]?.compendium_hint;
       if (hint) {
         try {
           resolved = await this.#resolveFromCompendium(item);
@@ -522,6 +536,8 @@ export class BridgeClient {
      * cópias eram apagadas e recriadas a cada envio, e a sintonia, as cargas e
      * os usos feitos aqui sumiam. Nativo só sai quando o Companion diz que o
      * item saiu do personagem.
+     * v1.26.0: a sintonia PEDIDA no Companion e os efeitos que o Mestre
+     * escreveu lá entram no plano, por versão (docs/SINTONIA.md).
      */
     const existentes = actor.items.map((i) => ({
       id: i.id,
@@ -540,6 +556,23 @@ export class BridgeClient {
       temIdentificacao: "identified" in (i.system ?? {}),
       identificado: i.system?.identified !== false,
       identificacaoAplicada: i.getFlag(MODULE_ID, "identificacao_aplicada"),
+      // SINTONIA e EFEITOS DO MESTRE (1.26.0)
+      temSintonia: "attuned" in (i.system ?? {}),
+      sintonizado: i.system?.attuned === true,
+      sintoniaAplicada: i.getFlag(MODULE_ID, "sintonia_aplicada"),
+      exigeSintonia: i.system?.attunement,
+      raridade: i.system?.rarity,
+      // As propriedades GUARDADAS (no item preparado é um Set).
+      propriedades: Array.from(i._source?.system?.properties ?? i.system?.properties ?? []),
+      compendio: !!i.getFlag(MODULE_ID, "compendio"),
+      // O "+N" mágico GUARDADO (o Companion manda `system.magicalBonus`, 1 a 5).
+      bonusMagico: i._source?.system?.magicalBonus ?? i.system?.magicalBonus,
+      efeitosAplicada: i.getFlag(MODULE_ID, "efeitos_aplicada"),
+      efeitos: efeitosDoItem(i).map((ef) => ({
+        id: ef.id,
+        doCompanion: ef.flags?.[MODULE_ID]?.do_companion === true,
+        transfer: ef.transfer !== false,
+      })),
     }));
     const recebidos = items.map((item) => {
       const nossa = item?.flags?.[MODULE_ID] ?? {};
@@ -552,14 +585,26 @@ export class BridgeClient {
         img: item?.img,
         identificacao: nossa.identificacao && typeof nossa.identificacao === "object" ? nossa.identificacao : undefined,
         fachada: item?.system?.unidentified && typeof item.system.unidentified === "object" ? item.system.unidentified : undefined,
+        sintonia: nossa.sintonia && typeof nossa.sintonia === "object" ? nossa.sintonia : undefined,
+        efeitos: temEfeitosDoMestre(item) ? nossa.efeitos : undefined,
+        efeitosNovos: Array.isArray(item?.effects) ? item.effects : undefined,
+        exigeSintonia: typeof item?.system?.attunement === "string" ? item.system.attunement : undefined,
+        raridade: typeof item?.system?.rarity === "string" ? item.system.rarity : undefined,
+        mgc: Array.isArray(item?.system?.properties) && item.system.properties.includes("mgc"),
+        bonusMagico: Number.isFinite(item?.system?.magicalBonus) ? item.system.magicalBonus : undefined,
         dados: item,
       };
     });
+    // O limite de sintonia do ator (dnd5e 5.3.3: `attributes.attunement.max`,
+    // 3 de início). O sistema só conta; quem barra é o plano.
+    const limiteDoAtor = actor.system?.attributes?.attunement?.max;
+    const limite = Number.isFinite(limiteDoAtor) ? limiteDoAtor : LIMITE_DE_SINTONIA;
     const plano = planejarInventario({
       existentes,
       recebidos,
       saidas,
       apagadosHaPouco: crachasApagadosHaPouco(actor.id),
+      limite,
     });
 
     // Prepara ANTES de mexer no ator: a resolução pelo compêndio (índice de
@@ -572,6 +617,16 @@ export class BridgeClient {
       if (Number.isFinite(r.identificacao?.versao)) {
         foundry.utils.setProperty(dados, `flags.${MODULE_ID}.identificacao_aplicada`, r.identificacao.versao);
       }
+      // SINTONIA (1.26.0): o item novo nasce com a decisão do plano (o pedido
+      // do jogador, ou não sintonizado se o limite barrou) e marca a versão
+      // que já está nele, para o próximo envio não reaplicar.
+      if (typeof r.sintonizar === "boolean") foundry.utils.setProperty(dados, "system.attuned", r.sintonizar);
+      if (Number.isInteger(r.sintonia?.versao) && r.sintonia.versao >= 0) {
+        foundry.utils.setProperty(dados, `flags.${MODULE_ID}.sintonia_aplicada`, r.sintonia.versao);
+      }
+      if (Number.isInteger(r.efeitos?.versao)) {
+        foundry.utils.setProperty(dados, `flags.${MODULE_ID}.efeitos_aplicada`, r.efeitos.versao);
+      }
       return dados;
     });
     const preparados = paraCriar.length ? await this.#prepareItems(paraCriar) : [];
@@ -579,9 +634,42 @@ export class BridgeClient {
     if (plano.apagar.length) {
       await actor.deleteEmbeddedDocuments("Item", plano.apagar, { companionBridge: true });
     }
+    // EFEITOS DO MESTRE (1.26.0): a troca dos efeitos do item que já existe,
+    // ANTES de gravar a versão aplicada. Se a troca falha, a versão não é
+    // gravada naquele item e o próximo envio tenta de novo.
+    // `item.deleteEmbeddedDocuments`/`createEmbeddedDocuments("ActiveEffect")`
+    // no item embutido do ator: o mesmo caminho de canonico-foundry.js.
+    // HIPÓTESE (docs/SINTONIA.md): a opção `companionBridge` chegar aos
+    // ganchos de efeito; aqui ninguém depende dela (live-sync.js manda os
+    // efeitos do item de qualquer jeito, e a assinatura não repete o envio).
+    const comEfeitosTrocados = [];
+    for (const m of plano.atualizar) {
+      if (!m.efeitos) continue;
+      const item = actor.items.get(m._id);
+      try {
+        if (!item) throw new Error("item sumiu do ator");
+        if (m.efeitos.apagar.length) {
+          await item.deleteEmbeddedDocuments("ActiveEffect", m.efeitos.apagar, { companionBridge: true });
+        }
+        if (m.efeitos.criar.length) {
+          await item.createEmbeddedDocuments("ActiveEffect", foundry.utils.deepClone(m.efeitos.criar), { companionBridge: true });
+        }
+        comEfeitosTrocados.push(m._id);
+      } catch (err) {
+        delete m.efeitosAplicada;
+        this.log(`efeitos do Companion em "${item?.name ?? m._id}" não foram trocados: ${err?.message ?? err}`);
+        console.error(`${MODULE_ID} | troca de efeitos falhou`, err);
+      }
+    }
     let atualizados = [];
-    if (plano.atualizar.length) {
-      atualizados = await actor.updateEmbeddedDocuments("Item", plano.atualizar.map(paraDocumento), { companionBridge: true });
+    const documentos = plano.atualizar.map(paraDocumento).filter((d) => Object.keys(d).length > 1);
+    if (documentos.length) {
+      atualizados = await actor.updateEmbeddedDocuments("Item", documentos, { companionBridge: true });
+    }
+    if (comEfeitosTrocados.length) {
+      // Os efeitos novos voltam ao Companion (item.effects), como os dos criados.
+      const trocados = comEfeitosTrocados.map((id) => actor.items.get(id)).filter(Boolean);
+      void reportItemEffects(actor, trocados);
     }
     let criados = [];
     if (preparados.length) {
@@ -601,7 +689,20 @@ export class BridgeClient {
     }
     // A quantidade que o Foundry ficou (depois da diferença) e a sintonia dos
     // itens tocados voltam ao Companion: ele passa a mostrar o número daqui.
+    // SINTONIA (1.26.0): o item sintonizado (ou barrado) a pedido do Companion
+    // está em `atualizados`/`criados`: a volta leva o `attuned` REAL.
     agendarEstado(actor, [...atualizados, ...criados]);
+    // O limite barrou algum pedido: o GM fica sabendo; o Companion se corrige
+    // pela volta (attuned: false).
+    const barrados = [
+      ...plano.atualizar.filter((m) => m.sintoniaBarrada).map((m) => actor.items.get(m._id)?.name),
+      ...plano.criar.filter((r) => r.sintoniaBarrada).map((r) => r.nome),
+    ];
+    for (const nome of barrados) {
+      const frase = fraseDoLimiteDeSintonia(actor.name, limite, nome);
+      this.log(frase);
+      ui.notifications?.warn(frase);
+    }
     this.log(
       `inventário: ${criados.length} criado(s), ${atualizados.length} atualizado(s) no lugar, ${plano.apagar.length} apagado(s)`
     );
@@ -617,6 +718,19 @@ export class BridgeClient {
   }
 }
 
+/** O item traz os bônus que o MESTRE escreveu no Companion (`flags.efeitos.versao` ≥ 1)? */
+function temEfeitosDoMestre(item) {
+  const versao = item?.flags?.[MODULE_ID]?.efeitos?.versao;
+  return Number.isInteger(versao) && versao >= 1;
+}
+
+/** Os ActiveEffects de um item, em lista (`item.effects` é uma Collection, que é um Map). */
+function efeitosDoItem(item) {
+  const efeitos = item?.effects;
+  if (!efeitos) return [];
+  return typeof efeitos.values === "function" ? [...efeitos.values()] : Array.from(efeitos);
+}
+
 /** Mudança do plano → atualização de documento do Foundry. */
 function paraDocumento(m) {
   const doc = { _id: m._id };
@@ -629,5 +743,13 @@ function paraDocumento(m) {
   if (typeof m.fachada?.name === "string") doc["system.unidentified.name"] = m.fachada.name;
   if (typeof m.fachada?.description === "string") doc["system.unidentified.description"] = m.fachada.description;
   if (m.identificacaoAplicada !== undefined) doc[`flags.${MODULE_ID}.identificacao_aplicada`] = m.identificacaoAplicada;
+  // SINTONIA e EFEITOS DO MESTRE (1.26.0)
+  if (m.sintonizado !== undefined) doc["system.attuned"] = m.sintonizado;
+  if (m.sintoniaAplicada !== undefined) doc[`flags.${MODULE_ID}.sintonia_aplicada`] = m.sintoniaAplicada;
+  if (m.exigeSintonia !== undefined) doc["system.attunement"] = m.exigeSintonia;
+  if (m.raridade !== undefined) doc["system.rarity"] = m.raridade;
+  if (m.propriedades !== undefined) doc["system.properties"] = m.propriedades;
+  if (m.bonusMagico !== undefined) doc["system.magicalBonus"] = m.bonusMagico;
+  if (m.efeitosAplicada !== undefined) doc[`flags.${MODULE_ID}.efeitos_aplicada`] = m.efeitosAplicada;
   return doc;
 }

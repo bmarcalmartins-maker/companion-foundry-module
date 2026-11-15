@@ -1,4 +1,4 @@
-# O saque (módulo 1.25.0)
+# O saque (módulo 1.25.0; o achado direto e a janela enxuta, 1.26.0)
 
 Inimigo (ator do tipo `npc`) derrotado vira um "corpo" no Companion; o Mestre
 libera a revista para UM personagem; o jogador rola Investigação (a nativa do
@@ -82,7 +82,9 @@ Desligada: nenhum aviso de morte sai e o `saque.comando` responde
    `{ aberta: true }`. Sem dono ativo (ou sem resposta em 15 s): o aviso ao
    GM, "<pc> não está no Foundry: ele pega pelo Companion.".
 10. **A janela**: "O que você achou em <corpo>"; as moedas primeiro ("Pegar
-    as moedas"/"Deixar"), depois cada item ("Pegar"/"Deixar"). O clique vai ao
+    as moedas"/"Deixar"), depois cada item ("Pegar"/"Deixar"). Do item, só a
+    imagem, o nome (xN) e a raridade; do não identificado, "Não identificado"
+    e a descrição da fachada (1.26.0, seção "A janela enxuta"). O clique vai ao
     GM ativo por `User#query` (`companion-foundry-bridge.saqueDecidir`), que
     chama `saque.pegar`/`saque.deixar` e devolve `{ ok, pendentes, error }`.
     Enquanto espera, os botões da linha ficam desligados; ok, a linha vira
@@ -92,6 +94,63 @@ Desligada: nenhum aviso de morte sai e o `saque.comando` responde
 11. **`encerrada`**: um cartão só dos GMs com o texto `pegou`, se vier.
 12. **`pedido`** (a qualquer hora): o cartão só dos GMs, "<pc> quer revistar
     <corpo>", com "Liberar para <pc>".
+
+## O achado direto (1.26.0)
+
+O Companion ganhou um fluxo irmão do saque: o Mestre entrega um achado a UM
+personagem ("você encontra Y"), sem morto, sem Investigação e sem "Revelar".
+Para o módulo é o mesmo `saque.comando`, com `corpo.origem === "achado"`, e só
+chegam DUAS ações:
+
+- **`revelada`**: a janela abre no navegador do dono ATIVO do ator, como no
+  passo 9, com o título de dentro **"Você encontrou"** (o nome do corpo nem
+  entra) e o título da barra "O achado". Não existe cartão de antes no chat
+  (nem morte, nem rolagem, nem resultado): `acharCartao` não acha nada e segue.
+  As linhas, os botões e o caminho do "Pegar"/"Deixar" (`saque.pegar`,
+  `saque.deixar`, com `revista_id` e `achado_id`) são os mesmos.
+- **`encerrada`**: o cartão só dos GMs com o texto de `pegou`, como no saque.
+
+**O dono fora do Foundry** (sem ator ligado, sem dono conectado, ou a janela
+não respondeu em 15 s): um cartão curto, só dos GMs, "<pc> não está conectado:
+o achado espera no Companion." (`saque_cartao.tipo = "achado_espera"`). No
+saque de sempre continua o aviso de tela ("<pc> não está no Foundry: ele pega
+pelo Companion."): lá o cartão do resultado já está no chat; no achado não
+haveria rastro nenhum.
+
+`corpo.origem` é `"foundry"`, `"mestre"` ou `"achado"`; ausente, ou qualquer
+outro valor, é o saque de sempre. Só `"achado"` muda o desenho.
+
+O que o módulo ainda EXIGE do payload do achado (`validarComando` não mudou):
+`corpo.id` nas duas ações; em `revelada`, também `pc.id`, `revista.id` e
+`achados` (lista). A janela é guardada por `revista.id`, e é ele que volta no
+"Pegar". Se o Companion não mandar `revista.id` no achado, a resposta é
+`{ recebido: false, motivo: "sem_revista" }` (ver "Decisões").
+
+## A janela enxuta (1.26.0, decisão D1 do Bruno)
+
+A janela do jogador mostra, de cada ITEM, só: a imagem, o nome (xN), a
+raridade e "Pegar"/"Deixar". Do item NÃO identificado: "Não identificado" no
+lugar da raridade e a `descricao`, que nele é a da fachada. Vale para o saque
+de monstro e para o achado direto. O resto (dano, CA, alcance, propriedades,
+peso, sintonia, tipo, a descrição do item identificado) aparece na ficha do
+item, no Companion ou no Foundry, depois de pegar.
+
+A lista fixa de campos que `dadosDaJanela` deixa passar ao navegador do
+jogador:
+
+- todo achado: `id, tipo, quantidade, moedas, decisao, pego, nome,
+  identificado, img, imagem_url`;
+- item identificado: mais `raridade`;
+- item não identificado: mais `descricao` (e SEM `raridade`, que entregaria o
+  que é).
+
+Um Companion antigo que ainda mande `tipo_item`, `subtipo`, `dano`,
+`tipo_dano`, `ca`, `alcance`, `propriedades`, `peso`, `sintonia` ou a
+`descricao` do item identificado: nada disso passa, e nada disso é desenhado.
+Vai também `origem` (`"achado"` ou `"saque"`) ao lado de `revista_id`,
+`corpo` e `pc`.
+
+O cartão `resultado` do GM não mudou.
 
 ## O contrato
 
@@ -131,7 +190,8 @@ motivo: "acao_desconhecida: <x>" }`; payload sem o que a ação exige,
 
 ```
 { aviso_id, acao: "pedido"|"liberada"|"resultado"|"revelada"|"encerrada",
-  corpo: { id, nome, sem_ficha, sorteado, fechado, foundry_ator_uuid },
+  corpo: { id, nome, origem, sem_ficha, sorteado, fechado, foundry_ator_uuid },
+                                      // origem (1.26.0): foundry|mestre|achado
   revista: { id, estado, total, total_origem, faixa },   // baixa|media|boa|alta
   pc: { id, nome, foundry_actor_id },                    // pode ser null
   pcs: [{ id, nome, foundry_actor_id }],
@@ -148,10 +208,12 @@ quantidade, moedas, moedas_texto, nome, nome_real?, identificado, raridade,
 tipo_item, subtipo, img, imagem_url, dano, tipo_dano, ca, alcance,
 propriedades, peso, sintonia, descricao, fonte, quebra_regra, estado }`.
 
-`achados` em `revelada` (a visão do JOGADOR): `{ id, tipo, quantidade, moedas:
-{ pp, gp, ep, sp, cp }, decisao: null|"pegou"|"deixou", pego, nome,
-identificado, raridade, tipo_item, subtipo, img, imagem_url, dano, tipo_dano,
-ca, alcance, propriedades, peso, sintonia, descricao }`.
+`achados` em `revelada` (a visão do JOGADOR, desde a 1.26.0): `{ id, tipo,
+quantidade, moedas: { pp, gp, ep, sp, cp }, decisao: null|"pegou"|"deixou",
+pego, nome, identificado, raridade, img, imagem_url }`, e `descricao` só no
+item NÃO identificado (a fachada). Até a 1.25.0 vinham também `tipo_item`,
+`subtipo`, `dano`, `tipo_dano`, `ca`, `alcance`, `propriedades`, `peso`,
+`sintonia` e a `descricao` de todo item: o módulo 1.26.0 os ignora.
 
 ## O que o módulo garante sobre os dados
 
@@ -163,14 +225,12 @@ ca, alcance, propriedades, peso, sintonia, descricao }`.
 - **Nas flags dos cartões só vão ids** (`saque_cartao: { tipo, corpo_id,
   revista_id }`): o jogador lê as flags das mensagens que recebe.
 - **Ao navegador do jogador vai só o que a janela usa** (`dadosDaJanela`): a
-  lista de campos é fixa (o `nome_real`, a `fonte` e a `faixa` não passam), e
-  o item não identificado vai só com `nome`, `tipo_item`, imagem e
-  `descricao`, venha o que vier do Companion.
+  lista de campos é fixa (seção "A janela enxuta"; o `nome_real`, a `fonte`,
+  a `faixa` e os fatos do item não passam), e o item não identificado vai só
+  com `nome`, imagem e `descricao`, venha o que vier do Companion.
 - **As moedas** são escritas pelo módulo a partir de `moedas`: pp → "pl",
   gp → "po", ep → "pe", sp → "pp", cp → "pc", nessa ordem, só as maiores que
   zero ("3 po, 8 pp").
-- **`propriedades`** pode ser texto, lista (textos ou objetos com
-  `nome`/`name`/`label`) ou objeto (as chaves verdadeiras e "chave: valor").
 
 ## A janela de pergaminho
 
@@ -209,7 +269,10 @@ toque (`pointer: coarse`), os botões têm 44 px.
   Foundry de mentira.
 - `node qa/saque/capturar.mjs` (precisa do Playwright): as fotos em
   `qa/saque/capturas/` (1440×900, iPhone 390×844 e iPad 820×1180; os estados
-  padrão, erro, espera, tudo decidido e o foco) e as medidas. A moldura em
+  padrão, erro, espera, tudo decidido, o foco e, desde a 1.26.0, o achado
+  direto) e as medidas; confere também que nada do que saiu da janela aparece
+  e o título de cada caso. No repositório ficam a padrão e a do achado de
+  cada tela. A moldura em
   volta da folha (`.application`, `.window-header`, `.window-content`) é
   IMITAÇÃO na página de prova.
 
@@ -265,6 +328,14 @@ toque (`pointer: coarse`), os botões têm 44 px.
     novo aparece. A criatura curada e derrubada de novo não avisa outra vez na
     mesma página.
 
+15. **(1.26.0) O título da barra da janela no achado direto.** A classe da
+    janela define `get title()` ("O achado" ou "O saque"). Não foi conferido
+    que a ApplicationV2 leia o título por esse getter; se não ler, a barra
+    fica "O saque" e o título de dentro ("Você encontrou") é o que vale.
+16. **(1.26.0) O achado direto com o dono conectado em OUTRA cena ou com a
+    janela de outro saque aberta:** cada `revista.id` é uma janela; não foi
+    visto no Foundry como duas janelas de pergaminho convivem.
+
 ## Decisões onde o pedido era ambíguo
 
 - **Os textos do saque estão em português, direto em `scripts/saque.js`.** Só
@@ -281,5 +352,17 @@ toque (`pointer: coarse`), os botões têm 44 px.
   esquecido para o próximo sinal tentar de novo.
 - **Revelado pelo Companion** (e não pelo botão do cartão): o cartão do
   resultado perde o botão do mesmo jeito.
-- **A linha "tipo" do item não identificado** mostra só `tipo_item` (o
-  `subtipo` poderia entregar o que é).
+- **(1.26.0) A linha do tipo saiu da janela** (era `tipo_item`, e o `subtipo`
+  no identificado): não está na lista da janela enxuta.
+- **(1.26.0) O achado direto exige `revista.id` em `revelada`**, como o
+  saque: a janela e o "Pegar" são por revista. O pedido não dizia se o achado
+  manda `revista`; se não mandar, o comando é recusado (`sem_revista`) e é
+  preciso combinar o campo.
+- **(1.26.0) O dono ausente no achado vira CARTÃO; no saque, segue o aviso de
+  tela.** O pedido dizia "cartão curto" e "mantenha o padrão"; o padrão de
+  hoje é o aviso de tela, que some. No achado não há outro rastro no chat.
+- **(1.26.0) O não identificado não leva a raridade** ao navegador do
+  jogador, mesmo ela estando na lista do Companion: já era assim na 1.25.0.
+- **(1.26.0) `textoDasPropriedades` e `textoDaSintonia` saíram de
+  `scripts/saque.js`** (só a janela os usava), com as regras de CSS
+  `.cfb-saque-fatos` e `.cfb-saque-sintonia`.

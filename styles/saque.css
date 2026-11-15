@@ -284,36 +284,9 @@
   font-weight: 700;
 }
 
-.cfb-saque-perg .cfb-saque-fatos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 16px;
-  margin: 6px 0 0;
-  padding: 0;
-}
-.cfb-saque-perg .cfb-saque-fatos > div {
-  display: flex;
-  gap: 5px;
-  min-width: 0;
-}
-.cfb-saque-perg .cfb-saque-fatos dt {
-  margin: 0;
-  color: var(--cfb-saque-tinta);
-  font-weight: 700;
-}
-.cfb-saque-perg .cfb-saque-fatos dd {
-  margin: 0;
-  color: var(--cfb-saque-texto);
-  overflow-wrap: anywhere;
-}
-
-.cfb-saque-perg .cfb-saque-sintonia {
-  margin: 4px 0 0;
-  color: var(--cfb-saque-texto-2);
-  font-size: 15px;
-  font-style: italic;
-}
-
+/* v1.26.0: a janela mostra do item só a imagem, o nome, a raridade e os
+   botões (a descrição, só a da fachada do não identificado). Os fatos e a
+   sintonia saíram daqui: aparecem na ficha do item, depois de pegar. */
 .cfb-saque-perg .cfb-saque-descricao {
   margin: 6px 0 0;
   color: var(--cfb-saque-texto);
